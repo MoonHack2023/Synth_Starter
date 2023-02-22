@@ -47,6 +47,37 @@ void setOutMuxBit(const uint8_t bitIdx, const bool value) {
       digitalWrite(REN_PIN,LOW);
 }
 
+  // Function to concatenate bits
+  uint8_t concatenateBits(int c0, int c1, int c2, int c3){
+    uint8_t result = 0;
+    result |= (c0 << 3);
+    result |= (c1 << 2);
+    result |= (c2 << 1);
+    result |= c3;
+    return result;
+  }
+
+  uint8_t readCols(){
+
+  int c0state = digitalRead(C0_PIN);
+  int c1state = digitalRead(C1_PIN);
+  int c2state = digitalRead(C2_PIN);
+  int c3state = digitalRead(C3_PIN);
+
+  // Call the concatenateBits() function with the read states
+  uint8_t cols = concatenateBits(c0state, c1state, c2state, c3state);
+  return cols;
+}
+
+void setRow(uint8_t rowIdx){
+  digitalWrite(REN_PIN,LOW);
+  digitalWrite(RA0_PIN, rowIdx & 0b001);
+  digitalWrite(RA1_PIN, rowIdx & 0b010);
+  digitalWrite(RA2_PIN, rowIdx & 0b100);
+  digitalWrite(REN_PIN,HIGH);
+}
+
+
 void setup() {
   // put your setup code here, to run once:
 
@@ -83,6 +114,7 @@ void loop() {
   // put your main code here, to run repeatedly:
   static uint32_t next = millis();
   static uint32_t count = 0;
+  uint8_t keyArray[7];
 
   if (millis() > next) {
     next += interval;
@@ -90,12 +122,32 @@ void loop() {
     //Update display
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-    u8g2.drawStr(2,10,"Helllo World!");  // write something to the internal memory
-    u8g2.setCursor(2,20);
-    u8g2.print(count++);
-    u8g2.sendBuffer();          // transfer internal memory to the display
+    u8g2.drawStr(2,10,"Helllo World!"); // write something to the internal memory
 
+    int rowIdx = 0;
+
+    for (int i = 0; i<3; i++){
+      setRow(i);
+      delayMicroseconds(3);
+      uint8_t keys = readCols();
+      keyArray[i] = keys; 
+    }
+    u8g2.setCursor(2,20);
+    String binaryStr = String(keyArray[0],BIN) + String(keyArray[1],BIN) + String(keyArray[2],BIN);
+    Serial.println(binaryStr);
+    char formattedBinaryStr[13];
+    sprintf(formattedBinaryStr, "%012s", binaryStr.c_str());
+    u8g2.print(formattedBinaryStr);
+
+    // transfer internal memory to the display
+    u8g2.sendBuffer(); 
+ 
+      
+    
     //Toggle LED
     digitalToggle(LED_BUILTIN);
+    setRow(1);
+    // printFullBin(readCols());
   }
+
 }
