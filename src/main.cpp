@@ -189,19 +189,23 @@ void loop() {
       {"G#4", "A4", "A#4", "B4"}
     };
     
-    currentStepSize = 0; // set currentStepSize to 0 initially
+    uint32_t localCurrentStepSize = 0; // using a local variable for the step size and set to 0 (no output if no keys are pressed)
 
     for (int row = 0; row < NUM_ROWS; row++) {
       for (int col = 0; col < 4; col++) {
         if (keyStrArray[row] == keyValues[row][col]) {
-          currentStepSize = stepSizes[row * 4 + col];
-          Serial.println(currentStepSize);
+          localCurrentStepSize = stepSizes[row * 4 + col];
+          Serial.println(localCurrentStepSize);
           u8g2.drawStr(2, 30, noteNames[row][col].c_str());
-          break; 
+          break; // exit the inner loop once a key has been found
         }
       }
     }
-    
+
+    currentStepSize = localCurrentStepSize; // copy the final value to the global variable
+
+    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+
     if(keyArray[0] == 7) {
       currentStepSize =  stepSizes[0];
       Serial.println(currentStepSize);
