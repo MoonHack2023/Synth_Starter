@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <U8g2lib.h>
 #include <bitset>
+#include <STM32FreeRTOS.h>
 
 // Define the max() macro
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -41,6 +42,22 @@ U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
 
 //Check current step size
 volatile uint32_t currentStepSize;
+volatile uint8_t keyArray[7];
+const int NUM_ROWS = 3; // define a constant for the number of rows
+std::string keyStrArray[7];
+// volatile uint32_t localCurrentStepSize;
+
+const std::string keyValues[NUM_ROWS][4] = {
+  {"0111", "1011", "1101", "1110"},
+  {"0111", "1011", "1101", "1110"},
+  {"0111", "1011", "1101", "1110"}
+};
+const std::string noteNames[NUM_ROWS][4] = {
+  {"C4", "C#4", "D4", "D#4"},
+  {"E4", "F4", "F#4", "G4"},
+  {"G#4", "A4", "A#4", "B4"}
+};
+
 
 //Function to set outputs using key matrix
 void setOutMuxBit(const uint8_t bitIdx, const bool value) {
@@ -114,6 +131,51 @@ void sampleISR() {
   analogWrite(OUTR_PIN, Vout + 128);
 }
 
+void scanKeysTask(void * pvParameters){
+  const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  while(1){
+    vTaskDelayUntil( &xLastWakeTime, xFrequency);
+    const int NUM_ROWS = 3; // define a constant for the number of rows
+    for (int row = 0; row < NUM_ROWS; row++) {
+        setRow(row);
+        delayMicroseconds(3);
+        uint8_t keys = readCols();
+        std::bitset<4> keyBits(keys);
+        std::string keyString = keyBits.to_string();
+        keyStrArray[row] = keyString;
+        keyArray[row] = keys;
+    }
+
+    uint32_t localCurrentStepSize = 0;
+    for (int row = 0; row < NUM_ROWS; row++) {
+      for (int col = 0; col < 4; col++) {
+          if (keyStrArray[row] == keyValues[row][col]) {
+            localCurrentStepSize = stepSizes[row * 4 + col];
+            // Serial.println(localCurrentStepSize);
+            // u8g2.drawStr(2, 30, noteNames[row][col].c_str());
+            // break; // exit the inner loop once a key has been found
+          }
+        }
+      }
+    currentStepSize = localCurrentStepSize;
+    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+  }
+}
+
+void displayUpdateTask(void *  pvParameters){
+  const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  while(1){
+    vTaskDelayUntil( &xLastWakeTime, xFrequency);
+    u8g2.clearBuffer();         // clear the internal memory
+    u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
+    // u8g2.drawStr(2,10,"Hello World!"); // write something to the internal memory
+    std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2];
+    u8g2.drawStr(2,10, con.c_str());
+    u8g2.sendBuffer(); 
+  }  
+}
 
 void setup() {
   // put your setup code here, to run once:
@@ -151,86 +213,99 @@ void setup() {
   sampleTimer->setOverflow(22000, HERTZ_FORMAT);
   sampleTimer->attachInterrupt(sampleISR);
   sampleTimer->resume();
+
+  TaskHandle_t scanKeysHandle = NULL;
+  xTaskCreate(
+    scanKeysTask,		/* Function that implements the task */
+    "scanKeys",		/* Text name for the task */
+    64,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    1,			/* Task priority */
+    &scanKeysHandle );  /* Pointer to store the task handle */
+  
+  TaskHandle_t displayUpdateHandle = NULL;
+  xTaskCreate(
+    displayUpdateTask,		/* Function that implements the task */
+    "displayUpdate",		/* Text name for the task */
+    256,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    1,			/* Task priority */
+    &displayUpdateHandle );  /* Pointer to store the task handle */
+
+
+  vTaskStartScheduler();
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  static uint32_t next = millis();
-  static uint32_t count = 0;
-  uint8_t keyArray[7];
-  std::string keyStrArray[7];
-  if (millis() > next) {
-    next += interval;
+  // static uint32_t next = millis();
+  // static uint32_t count = 0;
+  
+  // if (millis() > next) {
+  //   next += interval;
 
-    //Update display
-    u8g2.clearBuffer();         // clear the internal memory
-    u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-    u8g2.drawStr(2,10,"Helllo World!"); // write something to the internal memory
+  //   //Update display
+  //   u8g2.clearBuffer();         // clear the internal memory
+  //   u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
+  //   u8g2.drawStr(2,10,"Helllo World!"); // write something to the internal memory
 
-    const int NUM_ROWS = 3; // define a constant for the number of rows
-    for (int row = 0; row < NUM_ROWS; row++) {
-        setRow(row);
-        delayMicroseconds(3);
-        uint8_t keys = readCols();
-        std::bitset<4> keyBits(keys);
-        std::string keyString = keyBits.to_string();
-        keyStrArray[row] = keyString;
-        keyArray[row] = keys;
-    }
+    // const int NUM_ROWS = 3; // define a constant for the number of rows
+    // for (int row = 0; row < NUM_ROWS; row++) {
+    //     setRow(row);
+    //     delayMicroseconds(3);
+    //     uint8_t keys = readCols();
+    //     std::bitset<4> keyBits(keys);
+    //     std::string keyString = keyBits.to_string();
+    //     keyStrArray[row] = keyString;
+    //     keyArray[row] = keys;
+    // }
 
-    const std::string keyValues[NUM_ROWS][4] = {
-      {"0111", "1011", "1101", "1110"},
-      {"0111", "1011", "1101", "1110"},
-      {"0111", "1011", "1101", "1110"}
-    };
-    const std::string noteNames[NUM_ROWS][4] = {
-      {"C4", "C#4", "D4", "D#4"},
-      {"E4", "F4", "F#4", "G4"},
-      {"G#4", "A4", "A#4", "B4"}
-    };
+
     
-    uint32_t localCurrentStepSize = 0; // using a local variable for the step size and set to 0 (no output if no keys are pressed)
+  //   // localCurrentStepSize = 0; // using a local variable for the step size and set to 0 (no output if no keys are pressed)
 
-    for (int row = 0; row < NUM_ROWS; row++) {
-      for (int col = 0; col < 4; col++) {
-        if (keyStrArray[row] == keyValues[row][col]) {
-          localCurrentStepSize = stepSizes[row * 4 + col];
-          Serial.println(localCurrentStepSize);
-          u8g2.drawStr(2, 30, noteNames[row][col].c_str());
-          break; // exit the inner loop once a key has been found
-        }
-      }
-    }
+  //   // for (int row = 0; row < NUM_ROWS; row++) {
+  //   //   for (int col = 0; col < 4; col++) {
+  //   //     if (keyStrArray[row] == keyValues[row][col]) {
+  //   //       localCurrentStepSize = stepSizes[row * 4 + col];
+  //   //       Serial.println(localCurrentStepSize);
+  //   //       u8g2.drawStr(2, 30, noteNames[row][col].c_str());
+  //   //       break; // exit the inner loop once a key has been found
+  //   //     }
+  //   //   }
+  //   // }
 
-    currentStepSize = localCurrentStepSize; // copy the final value to the global variable
+  //   // scanKeysTask(NULL);
 
-    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+  //   // currentStepSize = localCurrentStepSize; // copy the final value to the global variable
 
-    if(keyArray[0] == 7) {
-      currentStepSize =  stepSizes[0];
-      Serial.println(currentStepSize);
-    }
     
-    // Serial.println(keys);
-    u8g2.setCursor(2,20);
 
-    // Serial.print(keyStrArray[0].c_str());
-    // Serial.print(keyStrArray[1].c_str());
-    // Serial.println(keyStrArray[2].c_str());
+  //   if(keyArray[0] == 7) {
+  //     currentStepSize =  stepSizes[0];
+  //     Serial.println(currentStepSize);
+  //   }
+    
+  //   // Serial.println(keys);
+  //   u8g2.setCursor(2,20);
 
-    std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2];
+  //   // Serial.print(keyStrArray[0].c_str());
+  //   // Serial.print(keyStrArray[1].c_str());
+  //   // Serial.println(keyStrArray[2].c_str());
 
-    u8g2.drawStr(2,20, con.c_str());
+  //   std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2];
 
-    // transfer internal memory to the display
-    u8g2.sendBuffer(); 
+  //   u8g2.drawStr(2,20, con.c_str());
+
+  //   // transfer internal memory to the display
+  //   u8g2.sendBuffer(); 
  
       
     
-    //Toggle LED
-    digitalToggle(LED_BUILTIN);
-    setRow(1);
+  //   //Toggle LED
+  //   digitalToggle(LED_BUILTIN);
+  //   setRow(1);
     // printFullBin(readCols());
-  }
+  // }
 
 }
