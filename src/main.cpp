@@ -43,8 +43,13 @@ U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
 //Check current step size
 volatile uint32_t currentStepSize;
 volatile uint8_t keyArray[7];
-const int NUM_ROWS = 3; // define a constant for the number of rows
+const int NUM_ROWS = 4; // define a constant for the number of rows
 std::string keyStrArray[7];
+SemaphoreHandle_t keyArrayMutex;
+volatile int rotationVar = 0;
+std::string prevKnob3 = "00";
+int knob3Rotation = 0;
+
 // volatile uint32_t localCurrentStepSize;
 
 const std::string keyValues[NUM_ROWS][4] = {
@@ -103,6 +108,38 @@ void setRow(uint8_t rowIdx){
   digitalWrite(REN_PIN,HIGH);
 }
 
+void decodeKnob3(){
+  std::string currentKnob3 = keyStrArray[3].substr(0, 2); 
+  //Serial.println(keyStrArray[3]);
+
+  if (prevKnob3 == "00" && currentKnob3 == "01"){
+    rotationVar = 1;
+  }
+  else if (prevKnob3 == "01" && currentKnob3 == "00"){
+    rotationVar = -1;
+  }
+  else if (prevKnob3 == "10" && currentKnob3 == "11"){
+    rotationVar = -1;
+  }
+  else if (prevKnob3 == "11" && currentKnob3 == "10"){
+    rotationVar = 1;
+  }
+  else{
+    rotationVar = 0;
+  }
+  knob3Rotation += rotationVar;
+
+  if (knob3Rotation > 8){
+    knob3Rotation = 8;
+  }
+  else if (knob3Rotation < 0){
+    knob3Rotation = 0;
+  }
+
+
+  prevKnob3 = currentKnob3;
+}
+
 const uint32_t stepSizes [] = {
   /*
   1ull << 32 shift the value 1 to the left by 32 bits,setting the 33rd bit to 1. 
@@ -128,37 +165,38 @@ void sampleISR() {
   static uint32_t phaseAcc = 0;
   phaseAcc += currentStepSize;
   int32_t Vout = (phaseAcc >> 24) - 128;
-  analogWrite(OUTR_PIN, Vout + 128);
+  Vout = Vout >> (8 - knob3Rotation);
+  analogWrite(OUTR_PIN, (Vout + 128));
 }
 
 void scanKeysTask(void * pvParameters){
-  const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency);
-    const int NUM_ROWS = 3; // define a constant for the number of rows
-    for (int row = 0; row < NUM_ROWS; row++) {
-        setRow(row);
-        delayMicroseconds(3);
-        uint8_t keys = readCols();
-        std::bitset<4> keyBits(keys);
-        std::string keyString = keyBits.to_string();
-        keyStrArray[row] = keyString;
-        keyArray[row] = keys;
-    }
-
+    // const int NUM_ROWS = 3; // define a constant for the number of rows
     uint32_t localCurrentStepSize = 0;
     for (int row = 0; row < NUM_ROWS; row++) {
+      setRow(row);
+      delayMicroseconds(3);
+      uint8_t keys = readCols();
+      std::bitset<4> keyBits(keys);
+      std::string keyString = keyBits.to_string();
+      keyStrArray[row] = keyString;
+      keyArray[row] = keys;
       for (int col = 0; col < 4; col++) {
-          if (keyStrArray[row] == keyValues[row][col]) {
-            localCurrentStepSize = stepSizes[row * 4 + col];
-            // Serial.println(localCurrentStepSize);
-            // u8g2.drawStr(2, 30, noteNames[row][col].c_str());
-            // break; // exit the inner loop once a key has been found
-          }
+        xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
+        if (keyStrArray[row] == keyValues[row][col]) {
+          localCurrentStepSize = stepSizes[row * 4 + col];
         }
+        xSemaphoreGive(keyArrayMutex);
+      }
       }
     currentStepSize = localCurrentStepSize;
+    decodeKnob3();
+    // std::string currentKnob3 = keyStrArray[3].substr(0, 2); 
+    // Serial.println(keyStrArray[3].substr(0,2).c_str());
+    Serial.println(knob3Rotation);
     __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
 }
@@ -171,11 +209,13 @@ void displayUpdateTask(void *  pvParameters){
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
     // u8g2.drawStr(2,10,"Hello World!"); // write something to the internal memory
-    std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2];
+    std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2] + keyStrArray[3];
     u8g2.drawStr(2,10, con.c_str());
     u8g2.sendBuffer(); 
   }  
 }
+
+
 
 void setup() {
   // put your setup code here, to run once:
@@ -220,7 +260,7 @@ void setup() {
     "scanKeys",		/* Text name for the task */
     64,      		/* Stack size in words, not bytes */
     NULL,			/* Parameter passed into the task */
-    1,			/* Task priority */
+    2,			/* Task priority */
     &scanKeysHandle );  /* Pointer to store the task handle */
   
   TaskHandle_t displayUpdateHandle = NULL;
@@ -232,80 +272,13 @@ void setup() {
     1,			/* Task priority */
     &displayUpdateHandle );  /* Pointer to store the task handle */
 
-
+  
+  keyArrayMutex = xSemaphoreCreateMutex();
+  
+  
   vTaskStartScheduler();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  // static uint32_t next = millis();
-  // static uint32_t count = 0;
-  
-  // if (millis() > next) {
-  //   next += interval;
-
-  //   //Update display
-  //   u8g2.clearBuffer();         // clear the internal memory
-  //   u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-  //   u8g2.drawStr(2,10,"Helllo World!"); // write something to the internal memory
-
-    // const int NUM_ROWS = 3; // define a constant for the number of rows
-    // for (int row = 0; row < NUM_ROWS; row++) {
-    //     setRow(row);
-    //     delayMicroseconds(3);
-    //     uint8_t keys = readCols();
-    //     std::bitset<4> keyBits(keys);
-    //     std::string keyString = keyBits.to_string();
-    //     keyStrArray[row] = keyString;
-    //     keyArray[row] = keys;
-    // }
-
-
-    
-  //   // localCurrentStepSize = 0; // using a local variable for the step size and set to 0 (no output if no keys are pressed)
-
-  //   // for (int row = 0; row < NUM_ROWS; row++) {
-  //   //   for (int col = 0; col < 4; col++) {
-  //   //     if (keyStrArray[row] == keyValues[row][col]) {
-  //   //       localCurrentStepSize = stepSizes[row * 4 + col];
-  //   //       Serial.println(localCurrentStepSize);
-  //   //       u8g2.drawStr(2, 30, noteNames[row][col].c_str());
-  //   //       break; // exit the inner loop once a key has been found
-  //   //     }
-  //   //   }
-  //   // }
-
-  //   // scanKeysTask(NULL);
-
-  //   // currentStepSize = localCurrentStepSize; // copy the final value to the global variable
-
-    
-
-  //   if(keyArray[0] == 7) {
-  //     currentStepSize =  stepSizes[0];
-  //     Serial.println(currentStepSize);
-  //   }
-    
-  //   // Serial.println(keys);
-  //   u8g2.setCursor(2,20);
-
-  //   // Serial.print(keyStrArray[0].c_str());
-  //   // Serial.print(keyStrArray[1].c_str());
-  //   // Serial.println(keyStrArray[2].c_str());
-
-  //   std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2];
-
-  //   u8g2.drawStr(2,20, con.c_str());
-
-  //   // transfer internal memory to the display
-  //   u8g2.sendBuffer(); 
- 
-      
-    
-  //   //Toggle LED
-  //   digitalToggle(LED_BUILTIN);
-  //   setRow(1);
-    // printFullBin(readCols());
-  // }
 
 }
