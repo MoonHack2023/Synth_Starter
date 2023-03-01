@@ -2,7 +2,8 @@
 #include <U8g2lib.h>
 #include <bitset>
 #include <STM32FreeRTOS.h>
-
+#include <algorithm>
+#include <ES_CAN.h>
 // Define the max() macro
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
@@ -49,6 +50,10 @@ SemaphoreHandle_t keyArrayMutex;
 volatile int rotationVar = 0;
 std::string prevKnob3 = "00";
 int knob3Rotation = 0;
+QueueHandle_t msgInQ;
+
+std::string prevKeyArray[7] = {"1111", "1111", "1111", "1111", "1111", "1111", "1111"};
+const int OCTAVE = 4;
 
 // volatile uint32_t localCurrentStepSize;
 
@@ -136,7 +141,6 @@ void decodeKnob3(){
     knob3Rotation = 0;
   }
 
-
   prevKnob3 = currentKnob3;
 }
 
@@ -169,6 +173,27 @@ void sampleISR() {
   analogWrite(OUTR_PIN, (Vout + 128));
 }
 
+void checkKeyPress(){
+  uint8_t TX_Message[8] = {0};
+  TX_Message[1] = OCTAVE;
+  for (int row = 0; row < NUM_ROWS ; row++){
+    for (int col = 0; col < 5; col++){
+      if (keyStrArray[row][col] != prevKeyArray[row][col]){
+        if (prevKeyArray[row][col] == '1'){
+          TX_Message[0] = 80;
+        }
+        else if (prevKeyArray[row][col] == '0'){
+          TX_Message[0] = 82;
+        }
+        TX_Message[2] = row*4 + col;
+      }
+    }
+  }
+  // Serial.println(TX_Message[2]);
+  std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
+  CAN_TX(0x123, TX_Message);
+}
+
 void scanKeysTask(void * pvParameters){
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -191,12 +216,16 @@ void scanKeysTask(void * pvParameters){
         }
         xSemaphoreGive(keyArrayMutex);
       }
-      }
+    }
     currentStepSize = localCurrentStepSize;
+    checkKeyPress();
+    
     decodeKnob3();
+    
+    
     // std::string currentKnob3 = keyStrArray[3].substr(0, 2); 
     // Serial.println(keyStrArray[3].substr(0,2).c_str());
-    Serial.println(knob3Rotation);
+    // Serial.println(knob3Rotation);
     __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
 }
@@ -204,6 +233,8 @@ void scanKeysTask(void * pvParameters){
 void displayUpdateTask(void *  pvParameters){
   const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
+  uint32_t ID = 0x123;
+  uint8_t RX_Message[8]={0};
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency);
     u8g2.clearBuffer();         // clear the internal memory
@@ -211,7 +242,18 @@ void displayUpdateTask(void *  pvParameters){
     // u8g2.drawStr(2,10,"Hello World!"); // write something to the internal memory
     std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2] + keyStrArray[3];
     u8g2.drawStr(2,10, con.c_str());
-    u8g2.sendBuffer(); 
+     
+    while (CAN_CheckRXLevel()){
+	    CAN_RX(ID, RX_Message);
+    }
+
+    u8g2.setCursor(66,30);
+    u8g2.print((char) RX_Message[0]);
+    u8g2.print(RX_Message[1]);
+    u8g2.print(RX_Message[2]);
+
+    u8g2.sendBuffer();
+    
   }  
 }
 
@@ -254,6 +296,11 @@ void setup() {
   sampleTimer->attachInterrupt(sampleISR);
   sampleTimer->resume();
 
+  CAN_Init(true);
+  setCANFilter(0x123,0x7ff);
+  CAN_Start();
+
+  msgInQ = xQueueCreate(36,8);
   TaskHandle_t scanKeysHandle = NULL;
   xTaskCreate(
     scanKeysTask,		/* Function that implements the task */
