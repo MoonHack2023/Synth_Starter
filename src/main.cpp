@@ -4,6 +4,7 @@
 #include <STM32FreeRTOS.h>
 #include <algorithm>
 #include <ES_CAN.h>
+#include <iostream>
 // Define the max() macro
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
@@ -47,15 +48,14 @@ volatile uint8_t keyArray[7];
 const int NUM_ROWS = 4; // define a constant for the number of rows
 std::string keyStrArray[7];
 SemaphoreHandle_t keyArrayMutex;
-volatile int rotationVar = 0;
+SemaphoreHandle_t RXMutex;
+SemaphoreHandle_t CAN_TX_Semaphore;
+volatile int rotationVar = 3;
 std::string prevKnob3 = "00";
 int knob3Rotation = 0;
-// QueueHandle_t msgInQ;
-uint8_t TX_Message[8] = {0};
-
-
-
-
+QueueHandle_t msgInQ;
+uint8_t RX_Message[8]={0};
+QueueHandle_t msgOutQ;
 std::string prevKeyArray[7] = {"1111", "1111", "1111", "1111", "1111", "1111", "1111"};
 const int OCTAVE = 4;
 
@@ -177,32 +177,34 @@ void sampleISR() {
   analogWrite(OUTR_PIN, (Vout + 128));
 }
 
-void checkKeyPress(){
-  // uint8_t TX_Message[8] = {0};
-  // uint8_t TX_Message[8] = {0};
-  TX_Message[1] = OCTAVE;
-  for (int row = 0; row < NUM_ROWS ; row++){
-    for (int col = 0; col < 5; col++){
-      if (keyStrArray[row][col] != prevKeyArray[row][col]){
-        if (prevKeyArray[row][col] == '1'){
-          TX_Message[0] = 80;
-        }
-        else if (prevKeyArray[row][col] == '0'){
-          TX_Message[0] = 82;
-        }
-        TX_Message[2] = row*4 + col;
-      }
-    }
-  }
-  // Serial.println(TX_Message[2]);
-  std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
-  CAN_TX(0x123, TX_Message);
-  Serial.println(TX_Message[0]);
-}
+// void checkKeyPress(){
+//   // uint8_t TX_Message[8] = {0};
+//   uint8_t TX_Message[8];
+//   TX_Message[1] = OCTAVE;
+//   for (int row = 0; row < NUM_ROWS ; row++){
+//     for (int col = 0; col < 5; col++){
+//       if (keyStrArray[row][col] != prevKeyArray[row][col]){
+//         if (prevKeyArray[row][col] == '1'){
+//           TX_Message[0] = 80;
+//         }
+//         else if (prevKeyArray[row][col] == '0'){
+//           TX_Message[0] = 82;
+//         }
+//         TX_Message[2] = row*4 + col;
+//       }
+//     }
+//   }
+//   // Serial.println(TX_Message[2]);
+//   std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
+//   // CAN_TX(0x123, TX_Message);
+//   // Serial.println(TX_Message[0]);
+// }
 
 void scanKeysTask(void * pvParameters){
+  Serial.println("SCAN");
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
+  uint8_t TX_Message[8] = {0};
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency);
     // const int NUM_ROWS = 3; // define a constant for the number of rows
@@ -224,7 +226,28 @@ void scanKeysTask(void * pvParameters){
       }
     }
     currentStepSize = localCurrentStepSize;
-    checkKeyPress();
+
+  // this was checkeypress
+  // uint8_t TX_Message[8];
+  TX_Message[1] = OCTAVE;
+  for (int row = 0; row < NUM_ROWS-1 ; row++){
+    for (int col = 0; col < 5; col++){
+      if (keyStrArray[row][col] != prevKeyArray[row][col]){
+        if (prevKeyArray[row][col] == '1'){
+          TX_Message[0] = 80;
+        }
+        else if (prevKeyArray[row][col] == '0'){
+          TX_Message[0] = 82;
+        }
+        TX_Message[2] = row*4 + col;
+      }
+    }
+  }
+  // Serial.println(TX_Message[2]);
+  std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
+  xQueueSend( msgOutQ, TX_Message, portMAX_DELAY);
+  // CAN_TX(0x123, TX_Message);
+  // Serial.println(TX_Message[0]);
     
     decodeKnob3();
     
@@ -237,12 +260,13 @@ void scanKeysTask(void * pvParameters){
 }
 
 void displayUpdateTask(void *  pvParameters){
+  // Serial.println("DISPLAY");
   const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint32_t ID = 0x123;
-  uint8_t RX_Message[8]={0};
 
   while(1){
+    // Serial.println("DISPLAY");
     vTaskDelayUntil( &xLastWakeTime, xFrequency);
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
@@ -251,57 +275,86 @@ void displayUpdateTask(void *  pvParameters){
     u8g2.drawStr(2,10, con.c_str());
     
     u8g2.setCursor(66,30);
+    xSemaphoreTake(RXMutex, portMAX_DELAY);
     u8g2.print((char) RX_Message[0]);
     u8g2.print(RX_Message[1]);
     u8g2.print(RX_Message[2]);
-
-    while (CAN_CheckRXLevel())
-	    CAN_RX(ID, RX_Message);
-
+    xSemaphoreGive(RXMutex);
+    // while (CAN_CheckRXLevel()){
+	  //   // CAN_RX(ID, RX_Message);
+    // }
+    // std::cout<<RX_Message[0]<<std::endl;
     u8g2.sendBuffer();
     
   }  
 }
 
-// void decodeTask(void *  pvParameters){
-//   const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
-//   TickType_t xLastWakeTime = xTaskGetTickCount();
-//   uint32_t ID = 0x123;
-//   uint32_t localCurrentStepSize;
-//   while(1){
-//     xQueueReceive(msgInQ, RX_Message, portMAX_DELAY);
+void decodeTask(void *  pvParameters){
+  Serial.println("DECODE");
+  uint32_t ID = 0x123;
+  uint32_t localCurrentStepSize;
+  uint8_t Local_RX_Message[8];
+  // Serial.println("DECODE");
+  while (1){
+    xSemaphoreTake(RXMutex, portMAX_DELAY);
+    xQueueReceive(msgInQ, Local_RX_Message, portMAX_DELAY);
+    // Serial.print("Local:");
+    // Serial.println(Local_RX_Message[1]);
+    memcpy(RX_Message, Local_RX_Message, sizeof(RX_Message));
+    // mem(RX_Message, RX_Message + sizeof(RX_Message)/sizeof(RX_Message), Local_RX_Message);
+    xSemaphoreGive(RXMutex);
+    // Serial.print("Global: ");
+    // Serial.println(RX_Message[1]);
 
-//     while (CAN_CheckRXLevel()){
-// 	    CAN_RX(ID, RX_Message);
-//     }
+    xSemaphoreTake(RXMutex, portMAX_DELAY);
+    for (int i = 0; i < 4; i++){
+      // detect press messages
+      if (RX_Message[0] == 80){
+        // Serial.println("Pressed");
 
-//     for (int i = 0; i < 4; i++){
-//       // detect press messages
-//       if (RX_Message[0] == 80){
-//         localCurrentStepSize = stepSizes[RX_Message[2]] ;
-//         localCurrentStepSize << (RX_Message[1] - 4);
-//         __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
-//       }
-//       // detect release messages
-//       else if (RX_Message[0] == 82){
-//         currentStepSize = 0;
-//       }
-//     }
+        localCurrentStepSize = stepSizes[RX_Message[2]] ;
+        localCurrentStepSize << (RX_Message[1] - 4);
+        __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+      }
+      // detect release messages
+      else if (RX_Message[0] == 82){
+        currentStepSize = 0;
+        // Serial.println("Released");
+      }
+    }
+    xSemaphoreGive(RXMutex);
+  
+  }  
+}
 
-    
-//   }  
-// }
+void CAN_RX_ISR (void) {
+	uint8_t RX_Message_ISR[8];
+	uint32_t ID;
+	CAN_RX(ID, RX_Message_ISR);
+	xQueueSendFromISR(msgInQ, RX_Message_ISR, NULL);
+}
 
-// void CAN_RX_ISR (void) {
-// 	uint8_t RX_Message_ISR[8];
-// 	uint32_t ID;
-// 	CAN_RX(ID, RX_Message_ISR);
-// 	xQueueSendFromISR(msgInQ, RX_Message_ISR, NULL);
-// }
+void CAN_TX_Task (void * pvParameters) {
+  Serial.println("CAN");
+	uint8_t msgOut[8];
+	while (1) {
+	   xQueueReceive(msgOutQ, msgOut, portMAX_DELAY);
+	   xSemaphoreTake(CAN_TX_Semaphore, portMAX_DELAY);
+	   CAN_TX(0x123, msgOut);
+	}
+}
 
+void CAN_TX_ISR (void) {
+	xSemaphoreGiveFromISR(CAN_TX_Semaphore, NULL);
+}
 
 void setup() {
   // put your setup code here, to run once:
+  msgInQ = xQueueCreate(36,8);
+  msgOutQ = xQueueCreate(36,8);
+  keyArrayMutex = xSemaphoreCreateMutex();
+  RXMutex = xSemaphoreCreateMutex();  
+  CAN_TX_Semaphore = xSemaphoreCreateCounting(3,3);
 
   //Set pin directions
   pinMode(RA0_PIN, OUTPUT);
@@ -327,9 +380,17 @@ void setup() {
   u8g2.begin();
   setOutMuxBit(DEN_BIT, HIGH);  //Enable display power supply
 
+  CAN_Init(true);
+  CAN_RegisterRX_ISR(CAN_RX_ISR);
+  CAN_RegisterTX_ISR(CAN_TX_ISR);
+  setCANFilter(0x123,0x7ff);
+  CAN_Start();
+
+
+
   //Initialise UART
   Serial.begin(9600);
-  Serial.println("Hello World");
+  // Serial.println("Hello World");
 
   TIM_TypeDef *Instance = TIM1;
   HardwareTimer *sampleTimer = new HardwareTimer(Instance);
@@ -337,18 +398,16 @@ void setup() {
   sampleTimer->attachInterrupt(sampleISR);
   sampleTimer->resume();
 
-  CAN_Init(true);
-  setCANFilter(0x123,0x7ff);
-  CAN_Start();
+  
 
-  // msgInQ = xQueueCreate(36,8);
+  
   TaskHandle_t scanKeysHandle = NULL;
   xTaskCreate(
     scanKeysTask,		/* Function that implements the task */
     "scanKeys",		/* Text name for the task */
     64,      		/* Stack size in words, not bytes */
     NULL,			/* Parameter passed into the task */
-    2,			/* Task priority */
+    4,			/* Task priority */
     &scanKeysHandle );  /* Pointer to store the task handle */
   
   TaskHandle_t displayUpdateHandle = NULL;
@@ -357,20 +416,29 @@ void setup() {
     "displayUpdate",		/* Text name for the task */
     256,      		/* Stack size in words, not bytes */
     NULL,			/* Parameter passed into the task */
-    1,			/* Task priority */
+    3,			/* Task priority */
     &displayUpdateHandle );  /* Pointer to store the task handle */
 
-  // TaskHandle_t decodeHandle = NULL;
-  // xTaskCreate(
-  //   decodeTask,		/* Function that implements the task */
-  //   "decode",		/* Text name for the task */
-  //   256,      		/* Stack size in words, not bytes */
-  //   NULL,			/* Parameter passed into the task */
-  //   1,			/* Task priority */
-  //   &decodeHandle );  /* Pointer to store the task handle */
+  TaskHandle_t decodeHandle = NULL;
+  xTaskCreate(
+    decodeTask,		/* Function that implements the task */
+    "decode",		/* Text name for the task */
+    32,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    2,			/* Task priority */
+    &decodeHandle );  /* Pointer to store the task handle */
+  
+  TaskHandle_t CAN_TXHandle = NULL;
+  xTaskCreate(
+    CAN_TX_Task,		/* Function that implements the task */
+    "CAN_TX",		/* Text name for the task */
+    32,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    1,			/* Task priority */
+    &CAN_TXHandle );  /* Pointer to store the task handle */
 
   
-  keyArrayMutex = xSemaphoreCreateMutex();
+
 
   
   vTaskStartScheduler();
