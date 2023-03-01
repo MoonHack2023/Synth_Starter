@@ -50,7 +50,11 @@ SemaphoreHandle_t keyArrayMutex;
 volatile int rotationVar = 0;
 std::string prevKnob3 = "00";
 int knob3Rotation = 0;
-QueueHandle_t msgInQ;
+// QueueHandle_t msgInQ;
+uint8_t TX_Message[8] = {0};
+
+
+
 
 std::string prevKeyArray[7] = {"1111", "1111", "1111", "1111", "1111", "1111", "1111"};
 const int OCTAVE = 4;
@@ -174,7 +178,8 @@ void sampleISR() {
 }
 
 void checkKeyPress(){
-  uint8_t TX_Message[8] = {0};
+  // uint8_t TX_Message[8] = {0};
+  // uint8_t TX_Message[8] = {0};
   TX_Message[1] = OCTAVE;
   for (int row = 0; row < NUM_ROWS ; row++){
     for (int col = 0; col < 5; col++){
@@ -192,6 +197,7 @@ void checkKeyPress(){
   // Serial.println(TX_Message[2]);
   std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
   CAN_TX(0x123, TX_Message);
+  Serial.println(TX_Message[0]);
 }
 
 void scanKeysTask(void * pvParameters){
@@ -235,6 +241,7 @@ void displayUpdateTask(void *  pvParameters){
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint32_t ID = 0x123;
   uint8_t RX_Message[8]={0};
+
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency);
     u8g2.clearBuffer();         // clear the internal memory
@@ -242,21 +249,55 @@ void displayUpdateTask(void *  pvParameters){
     // u8g2.drawStr(2,10,"Hello World!"); // write something to the internal memory
     std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2] + keyStrArray[3];
     u8g2.drawStr(2,10, con.c_str());
-     
-    while (CAN_CheckRXLevel()){
-	    CAN_RX(ID, RX_Message);
-    }
-
+    
     u8g2.setCursor(66,30);
     u8g2.print((char) RX_Message[0]);
     u8g2.print(RX_Message[1]);
     u8g2.print(RX_Message[2]);
+
+    while (CAN_CheckRXLevel())
+	    CAN_RX(ID, RX_Message);
 
     u8g2.sendBuffer();
     
   }  
 }
 
+// void decodeTask(void *  pvParameters){
+//   const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
+//   TickType_t xLastWakeTime = xTaskGetTickCount();
+//   uint32_t ID = 0x123;
+//   uint32_t localCurrentStepSize;
+//   while(1){
+//     xQueueReceive(msgInQ, RX_Message, portMAX_DELAY);
+
+//     while (CAN_CheckRXLevel()){
+// 	    CAN_RX(ID, RX_Message);
+//     }
+
+//     for (int i = 0; i < 4; i++){
+//       // detect press messages
+//       if (RX_Message[0] == 80){
+//         localCurrentStepSize = stepSizes[RX_Message[2]] ;
+//         localCurrentStepSize << (RX_Message[1] - 4);
+//         __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+//       }
+//       // detect release messages
+//       else if (RX_Message[0] == 82){
+//         currentStepSize = 0;
+//       }
+//     }
+
+    
+//   }  
+// }
+
+// void CAN_RX_ISR (void) {
+// 	uint8_t RX_Message_ISR[8];
+// 	uint32_t ID;
+// 	CAN_RX(ID, RX_Message_ISR);
+// 	xQueueSendFromISR(msgInQ, RX_Message_ISR, NULL);
+// }
 
 
 void setup() {
@@ -300,7 +341,7 @@ void setup() {
   setCANFilter(0x123,0x7ff);
   CAN_Start();
 
-  msgInQ = xQueueCreate(36,8);
+  // msgInQ = xQueueCreate(36,8);
   TaskHandle_t scanKeysHandle = NULL;
   xTaskCreate(
     scanKeysTask,		/* Function that implements the task */
@@ -319,9 +360,18 @@ void setup() {
     1,			/* Task priority */
     &displayUpdateHandle );  /* Pointer to store the task handle */
 
+  // TaskHandle_t decodeHandle = NULL;
+  // xTaskCreate(
+  //   decodeTask,		/* Function that implements the task */
+  //   "decode",		/* Text name for the task */
+  //   256,      		/* Stack size in words, not bytes */
+  //   NULL,			/* Parameter passed into the task */
+  //   1,			/* Task priority */
+  //   &decodeHandle );  /* Pointer to store the task handle */
+
   
   keyArrayMutex = xSemaphoreCreateMutex();
-  
+
   
   vTaskStartScheduler();
 }
