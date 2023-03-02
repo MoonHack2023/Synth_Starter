@@ -175,6 +175,7 @@ void sampleISR() {
   int32_t Vout = (phaseAcc >> 24) - 128;
   Vout = Vout >> (8 - knob3Rotation);
   analogWrite(OUTR_PIN, (Vout + 128));
+  // Serial.println(currentStepSize);
 }
 
 // void checkKeyPress(){
@@ -206,10 +207,11 @@ void scanKeysTask(void * pvParameters){
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint8_t TX_Message[8] = {0};
   while(1){
+    // Serial.println("SCAN");
     vTaskDelayUntil( &xLastWakeTime, xFrequency);
     // const int NUM_ROWS = 3; // define a constant for the number of rows
     uint32_t localCurrentStepSize = 0;
-    for (int row = 0; row < NUM_ROWS; row++) {
+    for (int row = 0; row < NUM_ROWS; row++){
       setRow(row);
       delayMicroseconds(3);
       uint8_t keys = readCols();
@@ -217,15 +219,15 @@ void scanKeysTask(void * pvParameters){
       std::string keyString = keyBits.to_string();
       keyStrArray[row] = keyString;
       keyArray[row] = keys;
-      for (int col = 0; col < 4; col++) {
+      for (int col = 0; col < 4; col++){
         xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
         if (keyStrArray[row] == keyValues[row][col]) {
           localCurrentStepSize = stepSizes[row * 4 + col];
-        }
-        xSemaphoreGive(keyArrayMutex);
       }
+        xSemaphoreGive(keyArrayMutex);
     }
-    currentStepSize = localCurrentStepSize;
+  }
+    // currentStepSize = localCurrentStepSize;
 
   // this was checkeypress
   // uint8_t TX_Message[8];
@@ -243,24 +245,54 @@ void scanKeysTask(void * pvParameters){
       }
     }
   }
+
+  if (TX_Message[0] == 80){
+    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+  }
+  // else if (TX_Message[0] == 82){
+  //   __atomic_store_n(&currentStepSize, 0, __ATOMIC_RELAXED);
+  // }
+
+  xSemaphoreTake(RXMutex, portMAX_DELAY);
+    for (int i = 0; i < 4; i++){
+      // detect press messages
+      if (RX_Message[0] == 80){
+        // Serial.println("Pressed");
+        localCurrentStepSize = stepSizes[RX_Message[2]] ;
+        localCurrentStepSize << (RX_Message[1] - 4);
+        __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+      }
+      // detect release messages
+      else if (RX_Message[0] == 82){
+        // currentStepSize = 0;
+        // localCurrentStepSize = 0;
+        // Serial.println("Released");
+      }
+    }
+  xSemaphoreGive(RXMutex);
+
+  if (TX_Message[0] == 82 && RX_Message[0] == 82){
+    __atomic_store_n(&currentStepSize, 0, __ATOMIC_RELAXED);
+  }
+
   // Serial.println(TX_Message[2]);
   std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
-  xQueueSend( msgOutQ, TX_Message, portMAX_DELAY);
+  // xQueueSend( msgOutQ, TX_Message, portMAX_DELAY);
   // CAN_TX(0x123, TX_Message);
   // Serial.println(TX_Message[0]);
     
-    decodeKnob3();
-    
+  decodeKnob3();
+  // Serial.print("local:");
+  // Serial.println(TX_Message[2]);
     
     // std::string currentKnob3 = keyStrArray[3].substr(0, 2); 
     // Serial.println(keyStrArray[3].substr(0,2).c_str());
     // Serial.println(knob3Rotation);
-    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
 }
 
 void displayUpdateTask(void *  pvParameters){
-  // Serial.println("DISPLAY");
+  Serial.println("DISPLAY");
   const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint32_t ID = 0x123;
@@ -298,9 +330,11 @@ void decodeTask(void *  pvParameters){
   while (1){
     xSemaphoreTake(RXMutex, portMAX_DELAY);
     xQueueReceive(msgInQ, Local_RX_Message, portMAX_DELAY);
-    // Serial.print("Local:");
-    // Serial.println(Local_RX_Message[1]);
+ 
     memcpy(RX_Message, Local_RX_Message, sizeof(RX_Message));
+    // Serial.print("rec:");
+    // Serial.println(RX_Message[2]);
+
     // mem(RX_Message, RX_Message + sizeof(RX_Message)/sizeof(RX_Message), Local_RX_Message);
     xSemaphoreGive(RXMutex);
     // Serial.print("Global: ");
@@ -311,14 +345,13 @@ void decodeTask(void *  pvParameters){
       // detect press messages
       if (RX_Message[0] == 80){
         // Serial.println("Pressed");
-
         localCurrentStepSize = stepSizes[RX_Message[2]] ;
         localCurrentStepSize << (RX_Message[1] - 4);
-        __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+        // __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
       }
       // detect release messages
       else if (RX_Message[0] == 82){
-        currentStepSize = 0;
+        // currentStepSize = 0;
         // Serial.println("Released");
       }
     }
@@ -329,7 +362,7 @@ void decodeTask(void *  pvParameters){
 
 void CAN_RX_ISR (void) {
 	uint8_t RX_Message_ISR[8];
-	uint32_t ID;
+	uint32_t ID = 0x123;
 	CAN_RX(ID, RX_Message_ISR);
 	xQueueSendFromISR(msgInQ, RX_Message_ISR, NULL);
 }
@@ -380,9 +413,9 @@ void setup() {
   u8g2.begin();
   setOutMuxBit(DEN_BIT, HIGH);  //Enable display power supply
 
-  CAN_Init(true);
+  CAN_Init(false);
   CAN_RegisterRX_ISR(CAN_RX_ISR);
-  CAN_RegisterTX_ISR(CAN_TX_ISR);
+  // CAN_RegisterTX_ISR(CAN_TX_ISR);
   setCANFilter(0x123,0x7ff);
   CAN_Start();
 
@@ -425,7 +458,7 @@ void setup() {
     "decode",		/* Text name for the task */
     32,      		/* Stack size in words, not bytes */
     NULL,			/* Parameter passed into the task */
-    2,			/* Task priority */
+    1,			/* Task priority */
     &decodeHandle );  /* Pointer to store the task handle */
   
   TaskHandle_t CAN_TXHandle = NULL;
@@ -434,16 +467,16 @@ void setup() {
     "CAN_TX",		/* Text name for the task */
     32,      		/* Stack size in words, not bytes */
     NULL,			/* Parameter passed into the task */
-    1,			/* Task priority */
+    2,			/* Task priority */
     &CAN_TXHandle );  /* Pointer to store the task handle */
 
-  
 
-
-  
   vTaskStartScheduler();
+
+
 }
 
 void loop() {
+  Serial.println(currentStepSize);
 
 }
