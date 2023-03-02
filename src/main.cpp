@@ -210,7 +210,8 @@ void scanKeysTask(void * pvParameters){
     // Serial.println("SCAN");
     vTaskDelayUntil( &xLastWakeTime, xFrequency);
     // const int NUM_ROWS = 3; // define a constant for the number of rows
-    uint32_t localCurrentStepSize = 0;
+    uint32_t localCurrentStepSizeT = 0;
+    uint32_t localCurrentStepSizeR = 0;
     for (int row = 0; row < NUM_ROWS; row++){
       setRow(row);
       delayMicroseconds(3);
@@ -222,72 +223,73 @@ void scanKeysTask(void * pvParameters){
       for (int col = 0; col < 4; col++){
         xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
         if (keyStrArray[row] == keyValues[row][col]) {
-          localCurrentStepSize = stepSizes[row * 4 + col];
-      }
+          localCurrentStepSizeT = stepSizes[row * 4 + col];
+        }
         xSemaphoreGive(keyArrayMutex);
+      }
     }
-  }
     // currentStepSize = localCurrentStepSize;
 
   // this was checkeypress
   // uint8_t TX_Message[8];
-  TX_Message[1] = OCTAVE;
-  for (int row = 0; row < NUM_ROWS-1 ; row++){
-    for (int col = 0; col < 5; col++){
-      if (keyStrArray[row][col] != prevKeyArray[row][col]){
-        if (prevKeyArray[row][col] == '1'){
-          TX_Message[0] = 80;
+    TX_Message[1] = OCTAVE;
+    for (int row = 0; row < NUM_ROWS-1 ; row++){
+      for (int col = 0; col < 5; col++){
+        if (keyStrArray[row][col] != prevKeyArray[row][col]){
+          if (prevKeyArray[row][col] == '1'){
+            TX_Message[0] = 80;
+          }
+          else if (prevKeyArray[row][col] == '0'){
+            TX_Message[0] = 82;
+          }
+          TX_Message[2] = row*4 + col;
         }
-        else if (prevKeyArray[row][col] == '0'){
-          TX_Message[0] = 82;
-        }
-        TX_Message[2] = row*4 + col;
       }
     }
-  }
 
-  if (TX_Message[0] == 80){
-    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
-  }
-  // else if (TX_Message[0] == 82){
-  //   __atomic_store_n(&currentStepSize, 0, __ATOMIC_RELAXED);
-  // }
-
-  xSemaphoreTake(RXMutex, portMAX_DELAY);
-    for (int i = 0; i < 4; i++){
-      // detect press messages
-      if (RX_Message[0] == 80){
-        // Serial.println("Pressed");
-        localCurrentStepSize = stepSizes[RX_Message[2]] ;
-        localCurrentStepSize << (RX_Message[1] - 4);
-        __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
-      }
-      // detect release messages
-      else if (RX_Message[0] == 82){
-        // currentStepSize = 0;
-        // localCurrentStepSize = 0;
-        // Serial.println("Released");
-      }
+    if (TX_Message[0] == 80){
+      __atomic_store_n(&currentStepSize, localCurrentStepSizeT, __ATOMIC_RELAXED);
     }
-  xSemaphoreGive(RXMutex);
+    // else if (TX_Message[0] == 82){
+    //   __atomic_store_n(&currentStepSize, 0, __ATOMIC_RELAXED);
+    // }
 
-  if (TX_Message[0] == 82 && RX_Message[0] == 82){
-    __atomic_store_n(&currentStepSize, 0, __ATOMIC_RELAXED);
-  }
+    xSemaphoreTake(RXMutex, portMAX_DELAY);
+      for (int i = 0; i < 4; i++){
+        // detect press messages
+        if (RX_Message[0] == 80){
+          // Serial.println("Pressed");
+          localCurrentStepSizeR = stepSizes[RX_Message[2]];
+          localCurrentStepSizeR = localCurrentStepSizeR << (RX_Message[1] - 4);
+          __atomic_store_n(&currentStepSize, localCurrentStepSizeR, __ATOMIC_RELAXED);
+          // Serial.println(localCurrentStepSizeR);
+        }
+        // detect release messages
+        else if (RX_Message[0] == 82){
+          // currentStepSize = 0;
+          // localCurrentStepSize = 0;
+          // Serial.println("Released");
+        }
+      }
+    xSemaphoreGive(RXMutex);
 
-  // Serial.println(TX_Message[2]);
-  std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
-  // xQueueSend( msgOutQ, TX_Message, portMAX_DELAY);
-  // CAN_TX(0x123, TX_Message);
-  // Serial.println(TX_Message[0]);
-    
-  decodeKnob3();
-  // Serial.print("local:");
-  // Serial.println(TX_Message[2]);
-    
-    // std::string currentKnob3 = keyStrArray[3].substr(0, 2); 
-    // Serial.println(keyStrArray[3].substr(0,2).c_str());
-    // Serial.println(knob3Rotation);
+    if (TX_Message[0] == 82 && RX_Message[0] == 82){
+      __atomic_store_n(&currentStepSize, 0, __ATOMIC_RELAXED);
+    }
+
+    // Serial.println(TX_Message[2]);
+    std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
+    // xQueueSend( msgOutQ, TX_Message, portMAX_DELAY);
+    // CAN_TX(0x123, TX_Message);
+    // Serial.println(TX_Message[0]);
+      
+    decodeKnob3();
+    // Serial.print("local:");
+    // Serial.println(TX_Message[2]);
+      
+      // std::string currentKnob3 = keyStrArray[3].substr(0, 2); 
+      // Serial.println(keyStrArray[3].substr(0,2).c_str());
+      // Serial.println(knob3Rotation);
   }
 }
 
