@@ -63,7 +63,7 @@ std::string prevKeyArray[7] = {"1111", "1111", "1111", "1111", "1111", "1111", "
 int OCTAVE = 4;
 uint8_t GLOBAL_RX_Message[8]={0};
 std::string keyStr = "0000";
-bool master = false;
+bool master = true;
 
 // volatile uint32_t localCurrentStepSize;
 
@@ -284,12 +284,17 @@ void scanKeysTask(void * pvParameters){
           TX_Message[2] = row*4 + col;
         }
       }
-  
     }
+    std::string lo_str = keyStr.substr(0, 6);  // bit 0 to bit 5
+    std::string hi_str = keyStr.substr(6, 5);   // bit 6 to bit 11
+    int lo_val = stoi(lo_str, nullptr, 2);
+    int hi_val = stoi(hi_str, nullptr, 2);
+    TX_Message[3] = lo_val;
+    TX_Message[4] = hi_val;
   }
   
   if (master){
-    Serial.println("MASTER");
+    // Serial.println("MASTER");
     xSemaphoreTake(RXMutex, portMAX_DELAY);
     for (int i = 0; i < 4; i++){
       // detect press messages
@@ -300,29 +305,20 @@ void scanKeysTask(void * pvParameters){
         // __atomic_store_n(&currentStepSize, localCurrentStepSizeR, __ATOMIC_RELAXED);
         // Serial.println(localCurrentStepSizeR);
       }
-      // detect release messages
-      else if (RX_Message[0] == 82){
-        // currentStepSize = 0;
-        // localCurrentStepSize = 0;
-        // Serial.println("Released");
-      }
     }
     xSemaphoreGive(RXMutex);
-
+    
     localCurrentStepSize = (localCurrentStepSizeR +  sum);
     __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
 
 
-  // Serial.println(TX_Message[2]);
   std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
   
   if (!master){
     xQueueSend( msgOutQ, TX_Message, portMAX_DELAY);
   }
-  // CAN_TX(0x123, TX_Message);
-  // Serial.println(TX_Message[0]);
-    
+
   decodeKnob3();
   decodeKnob2();
     
@@ -529,5 +525,6 @@ void setup() {
 }
 
 void loop() {
-  Serial.println(currentStepSize);
+    Serial.println(RX_Message[3]);
+
 }
