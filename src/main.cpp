@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <ES_CAN.h>
 #include <iostream>
+#include <string>
 // Define the max() macro
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
@@ -64,6 +65,7 @@ int OCTAVE = 4;
 uint8_t GLOBAL_RX_Message[8]={0};
 std::string keyStr = "0000";
 bool master = true;
+std::string RX_keyStr = "0000";
 
 // volatile uint32_t localCurrentStepSize;
 
@@ -211,7 +213,7 @@ void sampleISR() {
 }
 
 
-uint32_t chords(std::string keyStr){
+uint32_t chords(std::string keyStr, int OCTAVE){
   int zeroCount = 0;
   uint32_t sum = 0;
   uint32_t localCurrentStepSize = 0;
@@ -219,7 +221,13 @@ uint32_t chords(std::string keyStr){
     if (keyStr[i] == '0'){
       zeroCount++;
       localCurrentStepSize = stepSizes[i];
-      localCurrentStepSize = localCurrentStepSize << (OCTAVE - 4);
+      if (OCTAVE < 4){
+        localCurrentStepSize = localCurrentStepSize >> -(OCTAVE - 4);
+      }
+      else{
+        localCurrentStepSize = localCurrentStepSize << (OCTAVE - 4);
+      }
+      
       sum += localCurrentStepSize;
     }
   }
@@ -251,22 +259,21 @@ void scanKeysTask(void * pvParameters){
     }
     keyStr = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2] + keyStrArray[3];
     
-    int zeroCount = 0;
-    uint32_t sum = 0;
-    for (int i = 0; i < 12; i++){
-      if (keyStr[i] == '0'){
-        zeroCount++;
-        localCurrentStepSizeT = stepSizes[i];
-        localCurrentStepSizeT = localCurrentStepSizeT << (OCTAVE - 4);
-        sum += localCurrentStepSizeT;
-      }
-    }
-    if (zeroCount != 0){
-      sum /= zeroCount;
-    }
+    // int zeroCount = 0;
+    // uint32_t sum = 0;
+    // for (int i = 0; i < 12; i++){
+    //   if (keyStr[i] == '0'){
+    //     zeroCount++;
+    //     localCurrentStepSizeT = stepSizes[i];
+    //     localCurrentStepSizeT = localCurrentStepSizeT << (OCTAVE - 4);
+    //     sum += localCurrentStepSizeT;
+    //   }
+    // }
+    // if (zeroCount != 0){
+    //   sum /= zeroCount;
+    // }
     
     // currentStepSize = localCurrentStepSizeT;
-
   // this was checkeypress
   // uint8_t TX_Message[8];
 
@@ -296,19 +303,26 @@ void scanKeysTask(void * pvParameters){
   if (master){
     // Serial.println("MASTER");
     xSemaphoreTake(RXMutex, portMAX_DELAY);
-    for (int i = 0; i < 4; i++){
+    // for (int i = 0; i < 4; i++){
       // detect press messages
-      if (RX_Message[0] == 80){
-        // Serial.println("Pressed");
-        localCurrentStepSizeR = stepSizes[RX_Message[2]];
-        localCurrentStepSizeR = localCurrentStepSizeR << (RX_Message[1] - 4);
-        // __atomic_store_n(&currentStepSize, localCurrentStepSizeR, __ATOMIC_RELAXED);
-        // Serial.println(localCurrentStepSizeR);
-      }
+    if (RX_Message[0] == 80){
+      // Serial.println("Pressed");
+      localCurrentStepSizeR = stepSizes[RX_Message[2]];
+      localCurrentStepSizeR = localCurrentStepSizeR << (RX_Message[1] - 4);
     }
+    // }
+    std::bitset<6> binaryHigh(RX_Message[3]);
+    std::string binaryHighStr = binaryHigh.to_string();
+    std::bitset<5> binaryLow(RX_Message[4]);
+    std::string binaryLowStr = binaryLow.to_string();
+    RX_keyStr = binaryHighStr + binaryLowStr;
+    
     xSemaphoreGive(RXMutex);
     
-    localCurrentStepSize = (localCurrentStepSizeR +  sum);
+    uint32_t sumMaster = chords(keyStr,OCTAVE);
+    uint32_t sumSlave = chords(RX_keyStr,RX_Message[1]);
+
+    localCurrentStepSize = (sumSlave +  sumMaster);
     __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
 
@@ -343,23 +357,21 @@ void displayUpdateTask(void *  pvParameters){
     // u8g2.drawStr(2,10,"Hello World!"); // write something to the internal memory
     
     u8g2.drawStr(2,10, keyStr.c_str());
+    u8g2.drawStr(2,20, RX_keyStr.c_str());
     
-    u8g2.setCursor(2,20);
-    xSemaphoreTake(RXMutex, portMAX_DELAY);
-    u8g2.print((char) RX_Message[0]);
-    u8g2.print(RX_Message[1]);
-    u8g2.print(RX_Message[2]);
-    xSemaphoreGive(RXMutex);
+    // u8g2.setCursor(2,20);
+    // xSemaphoreTake(RXMutex, portMAX_DELAY);
+    // u8g2.print((char) RX_Message[0]);
+    // u8g2.print(RX_Message[1]);
+    // u8g2.print(RX_Message[2]);
+    // xSemaphoreGive(RXMutex);
      // u8g2.setCursor(2,40);
     std::string vol = "Vol: " + std::to_string(knob3Rotation);
     u8g2.drawStr(66,30, vol.c_str());
     std::string octave = "Octave: " + std::to_string(OCTAVE);
     u8g2.drawStr(2,30, octave.c_str());
 
-    // while (CAN_CheckRXLevel()){
-	  //   // CAN_RX(ID, RX_Message);
-    // }
-    // std::cout<<RX_Message[0]<<std::endl;
+
     u8g2.sendBuffer();
     
   }  
@@ -381,24 +393,6 @@ void decodeTask(void *  pvParameters){
     xSemaphoreGive(RXMutex);
     // Serial.print("Global: ");
     // Serial.println(RX_Message[1]);
-
-    // xSemaphoreTake(RXMutex, portMAX_DELAY);
-    // for (int i = 0; i < 4; i++){
-    //   // detect press messages
-    //   if (RX_Message[0] == 80){
-    //     // Serial.println("Pressed");
-
-    //     localCurrentStepSize = stepSizes[RX_Message[2]] ;
-    //     localCurrentStepSize << (RX_Message[1] - 4);
-    //     __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
-    //   }
-    //   // detect release messages
-    //   else if (RX_Message[0] == 82){
-    //     currentStepSize = 0;
-    //     // Serial.println("Released");
-    //   }
-    // }
-    // xSemaphoreGive(RXMutex);
   
   }  
 }
@@ -464,8 +458,6 @@ void setup() {
   setCANFilter(0x123,0x7ff);
   CAN_Start();
 
-
-
   //Initialise UART
   Serial.begin(9600);
   // Serial.println("Hello World");
@@ -525,6 +517,7 @@ void setup() {
 }
 
 void loop() {
-    Serial.println(RX_Message[3]);
+    // Serial.println(RX_Message[3]);
+    // Serial.println(finall.c_str());
 
 }
