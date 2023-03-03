@@ -293,7 +293,7 @@ void scanKeysTask(void * pvParameters){
       }
     }
     std::string lo_str = keyStr.substr(0, 6);  // bit 0 to bit 5
-    std::string hi_str = keyStr.substr(6, 5);   // bit 6 to bit 11
+    std::string hi_str = keyStr.substr(6, 6);   // bit 6 to bit 11
     int lo_val = stoi(lo_str, nullptr, 2);
     int hi_val = stoi(hi_str, nullptr, 2);
     TX_Message[3] = lo_val;
@@ -313,7 +313,7 @@ void scanKeysTask(void * pvParameters){
     // }
     std::bitset<6> binaryHigh(RX_Message[3]);
     std::string binaryHighStr = binaryHigh.to_string();
-    std::bitset<5> binaryLow(RX_Message[4]);
+    std::bitset<6> binaryLow(RX_Message[4]);
     std::string binaryLowStr = binaryLow.to_string();
     RX_keyStr = binaryHighStr + binaryLowStr;
     
