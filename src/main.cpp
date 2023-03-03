@@ -231,10 +231,20 @@ uint32_t chords(std::string keyStr, int OCTAVE){
       sum += localCurrentStepSize;
     }
   }
-  if (zeroCount != 0){
-    sum /= zeroCount;
-  }
+  // if (zeroCount != 0){
+  //   sum /= zeroCount;
+  // }
   return sum;
+}
+
+uint32_t countZero(std::string keyStr){
+  int zeroCount = 0;
+  for (int i = 0; i < 12; i++){
+    if (keyStr[i] == '0'){
+      zeroCount++;
+    }
+  }
+  return zeroCount;
 }
 
 void scanKeysTask(void * pvParameters){
@@ -322,7 +332,7 @@ void scanKeysTask(void * pvParameters){
     uint32_t sumMaster = chords(keyStr,OCTAVE);
     uint32_t sumSlave = chords(RX_keyStr,RX_Message[1]);
 
-    localCurrentStepSize = (sumSlave +  sumMaster);
+    localCurrentStepSize = (sumSlave +  sumMaster) / (countZero(RX_keyStr) + countZero(keyStr));
     __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
 
