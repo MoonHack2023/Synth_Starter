@@ -50,14 +50,20 @@ std::string keyStrArray[7];
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t RXMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
-volatile int rotationVar = 3;
+volatile int rotationVar = 0;
+volatile int octaveVar = 0;
 std::string prevKnob3 = "00";
+std::string prevKnob2 = "00";
 int knob3Rotation = 0;
+int knob2Rotation = 0;
 QueueHandle_t msgInQ;
 uint8_t RX_Message[8]={0};
 QueueHandle_t msgOutQ;
 std::string prevKeyArray[7] = {"1111", "1111", "1111", "1111", "1111", "1111", "1111"};
-const int OCTAVE = 4;
+int OCTAVE = 4;
+uint8_t GLOBAL_RX_Message[8]={0};
+std::string keyStr = "0000";
+
 
 // volatile uint32_t localCurrentStepSize;
 
@@ -122,16 +128,16 @@ void decodeKnob3(){
   //Serial.println(keyStrArray[3]);
 
   if (prevKnob3 == "00" && currentKnob3 == "01"){
-    rotationVar = 1;
+    rotationVar = -1;
   }
   else if (prevKnob3 == "01" && currentKnob3 == "00"){
-    rotationVar = -1;
+    rotationVar = 1;
   }
   else if (prevKnob3 == "10" && currentKnob3 == "11"){
-    rotationVar = -1;
+    rotationVar = 1;
   }
   else if (prevKnob3 == "11" && currentKnob3 == "10"){
-    rotationVar = 1;
+    rotationVar = -1;
   }
   else{
     rotationVar = 0;
@@ -148,26 +154,102 @@ void decodeKnob3(){
   prevKnob3 = currentKnob3;
 }
 
+void decodeKnob2(){
+  std::string currentKnob2 = keyStrArray[3].substr(2, 4); 
+  //Serial.println(keyStrArray[3]);
+
+  if (prevKnob2 == "00" && currentKnob2 == "01"){
+    octaveVar = -1;
+  }
+  else if (prevKnob2 == "01" && currentKnob2 == "00"){
+    octaveVar = 1;
+  }
+  else if (prevKnob2 == "10" && currentKnob2 == "11"){
+    octaveVar = 1;
+  }
+  else if (prevKnob2 == "11" && currentKnob2 == "10"){
+    octaveVar = -1;
+  }
+  else{
+    octaveVar = 0;
+  }
+
+  knob2Rotation += octaveVar;
+
+  if (knob2Rotation > 8){
+    knob2Rotation = 8;
+  }
+  else if (knob2Rotation < 0){
+    knob2Rotation = 0;
+  }
+
+  OCTAVE = knob2Rotation;
+  prevKnob2 = currentKnob2;
+}
+
+// const uint32_t stepSizes [] = {
+//   /*
+//   1ull << 32 shift the value 1 to the left by 32 bits,setting the 33rd bit to 1. 
+//   This creates a 64-bit binary number of 2ˆ32
+//   Using this to obtain a constant that represents one full cycle of a sine wave in the phase accumulator
+//   use 1ull << 32 instead of 2^32 directly to ensure that the result is a 64-bit integer with the most significant bit set to 1.
+//   */
+//   (uint32_t)((1ull << 32) * 261.63 / 22000), //C4
+//   (uint32_t)((1ull << 32) * 277.18 / 22000), //C#4
+//   (uint32_t)((1ull << 32) * 293.66 / 22000), //D4
+//   (uint32_t)((1ull << 32) * 311.13 / 22000), //D#4
+//   (uint32_t)((1ull << 32) * 329.63 / 22000), //E4
+//   (uint32_t)((1ull << 32) * 349.23 / 22000), //F4
+//   (uint32_t)((1ull << 32) * 369.99 / 22000), //F#4
+//   (uint32_t)((1ull << 32) * 392.00 / 22000), //G4
+//   (uint32_t)((1ull << 32) * 415.30 / 22000), //G#4
+//   (uint32_t)((1ull << 32) * 440.00 / 22000), //A4
+//   (uint32_t)((1ull << 32) * 466.16 / 22000), //A#4
+//   (uint32_t)((1ull << 32) * 493.88 / 22000), //B4
+// };
+
 const uint32_t stepSizes [] = {
-  /*
-  1ull << 32 shift the value 1 to the left by 32 bits,setting the 33rd bit to 1. 
-  This creates a 64-bit binary number of 2ˆ32
-  Using this to obtain a constant that represents one full cycle of a sine wave in the phase accumulator
-  use 1ull << 32 instead of 2^32 directly to ensure that the result is a 64-bit integer with the most significant bit set to 1.
-  */
-  (uint32_t)((1ull << 32) * 261.63 / 22000), //C4
-  (uint32_t)((1ull << 32) * 277.18 / 22000), //C#4
-  (uint32_t)((1ull << 32) * 293.66 / 22000), //D4
-  (uint32_t)((1ull << 32) * 311.13 / 22000), //D#4
-  (uint32_t)((1ull << 32) * 329.63 / 22000), //E4
-  (uint32_t)((1ull << 32) * 349.23 / 22000), //F4
-  (uint32_t)((1ull << 32) * 369.99 / 22000), //F#4
-  (uint32_t)((1ull << 32) * 392.00 / 22000), //G4
-  (uint32_t)((1ull << 32) * 415.30 / 22000), //G#4
-  (uint32_t)((1ull << 32) * 440.00 / 22000), //A4
-  (uint32_t)((1ull << 32) * 466.16 / 22000), //A#4
-  (uint32_t)((1ull << 32) * 493.88 / 22000), //B4
-};
+      51076922, //C4
+      54112683, //C#4
+      57330004, //D4
+      60740598, //D#4
+      64352275, //E4 
+      68178701, //F4
+      72231588, //F#4
+      76528508, //G4
+      81077269, //G#4
+      85899345, //A4
+      91006452, //A#4
+      96426316, //B4
+      };
+
+// const uint32_t frequencies [] = {
+//       261.63, //C4
+//       277.18, //C#4
+//       293.66, //D4
+//       311.13, //D#4
+//       329.63, //E4
+//       349.23, //F4
+//       369.99, //F#4
+//       392.00, //G4
+//       415.30, //G#4
+//       440.00, //A4
+//       466.16, //A#4
+//       493.88, //B4
+//       }
+
+
+// uint32_t freqToStep(uint32_t freq[]){
+//   uint32_t average = 0;
+//   for (int i = 0; i < sizeof(freq)/sizeof(freq[0]); i++){
+//     average += freq[i];
+//   }
+//   average /= sizeof(freq)/sizeof(freq[0]);
+
+//   uint32_t stepSize = (uint32_t)((1ull << 32) * average / 22000);
+  
+//   return stepSize;
+// }
 
 void sampleISR() {
   static uint32_t phaseAcc = 0;
@@ -212,6 +294,7 @@ void scanKeysTask(void * pvParameters){
     // const int NUM_ROWS = 3; // define a constant for the number of rows
     uint32_t localCurrentStepSizeT = 0;
     uint32_t localCurrentStepSizeR = 0;
+    uint32_t localCurrentStepSize  = 0;
     for (int row = 0; row < NUM_ROWS; row++){
       setRow(row);
       delayMicroseconds(3);
@@ -220,36 +303,66 @@ void scanKeysTask(void * pvParameters){
       std::string keyString = keyBits.to_string();
       keyStrArray[row] = keyString;
       keyArray[row] = keys;
-      for (int col = 0; col < 4; col++){
-        xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-        if (keyStrArray[row] == keyValues[row][col]) {
-          localCurrentStepSizeT = stepSizes[row * 4 + col];
-        }
-        xSemaphoreGive(keyArrayMutex);
+      // for (int col = 0; col < 4; col++){
+      //   xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
+      //   if (keyStrArray[row] == keyValues[row][col]) {
+      //     localCurrentStepSizeT = stepSizes[row * 4 + col];
+      //     localCurrentStepSizeT = localCurrentStepSizeT << (OCTAVE - 4);
+
+      //     // if (OCTAVE < 4)
+      //     //   localCurrentStepSizeT = localCurrentStepSizeT >> (OCTAVE - 4);
+      //     // else if (OCTAVE > 4){
+      //     //   localCurrentStepSizeT = localCurrentStepSizeT << (OCTAVE - 4);
+      //     // }
+      //   }
+      //   xSemaphoreGive(keyArrayMutex);
+      // }
+    }
+    keyStr = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2] + keyStrArray[3];
+    
+    int zeroCount = 0;
+    uint32_t sum = 0;
+    for (int i = 0; i < 12; i++){
+      if (keyStr[i] == '0'){
+        zeroCount++;
+        localCurrentStepSizeT = stepSizes[i];
+        localCurrentStepSizeT = localCurrentStepSizeT << (OCTAVE - 4);
+        sum += localCurrentStepSizeT;
       }
     }
+    if (zeroCount != 0){
+      sum /= zeroCount;
+    }
+    
+
     // currentStepSize = localCurrentStepSize;
 
   // this was checkeypress
   // uint8_t TX_Message[8];
-    TX_Message[1] = OCTAVE;
-    for (int row = 0; row < NUM_ROWS-1 ; row++){
-      for (int col = 0; col < 5; col++){
-        if (keyStrArray[row][col] != prevKeyArray[row][col]){
-          if (prevKeyArray[row][col] == '1'){
-            TX_Message[0] = 80;
-          }
-          else if (prevKeyArray[row][col] == '0'){
-            TX_Message[0] = 82;
-          }
-          TX_Message[2] = row*4 + col;
-        }
-      }
-    }
+    // TX_Message[1] = OCTAVE;
+    // for (int row = 0; row < NUM_ROWS-1 ; row++){
+    //   for (int col = 0; col < 5; col++){
+    //     if (keyStrArray[row][col] != prevKeyArray[row][col]){
+    //       if (prevKeyArray[row][col] == '1'){
+    //         TX_Message[0] = 80;
+    //       }
+    //       // else if (prevKeyArray[row][col] == '0'){
+    //       //   TX_Message[0] = 82;
+    //       // }
+    //       else if (prevKeyArray[row][col] == '0'){
+    //         TX_Message[0] = 82;
+    //       }
+    //       TX_Message[2] = row*4 + col;
+    //     }
+    //   }
+    // }
 
-    if (TX_Message[0] == 80){
-      __atomic_store_n(&currentStepSize, localCurrentStepSizeT, __ATOMIC_RELAXED);
-    }
+    // if (TX_Message[0] == 80){
+    //   // localCurrentStepSizeT += localCurrentStepSizeT;
+    //   // __atomic_store_n(&currentStepSize, localCurrentStepSizeT, __ATOMIC_RELAXED);
+    // }
+  
+
     // else if (TX_Message[0] == 82){
     //   __atomic_store_n(&currentStepSize, 0, __ATOMIC_RELAXED);
     // }
@@ -261,7 +374,7 @@ void scanKeysTask(void * pvParameters){
           // Serial.println("Pressed");
           localCurrentStepSizeR = stepSizes[RX_Message[2]];
           localCurrentStepSizeR = localCurrentStepSizeR << (RX_Message[1] - 4);
-          __atomic_store_n(&currentStepSize, localCurrentStepSizeR, __ATOMIC_RELAXED);
+          // __atomic_store_n(&currentStepSize, localCurrentStepSizeR, __ATOMIC_RELAXED);
           // Serial.println(localCurrentStepSizeR);
         }
         // detect release messages
@@ -273,9 +386,13 @@ void scanKeysTask(void * pvParameters){
       }
     xSemaphoreGive(RXMutex);
 
-    if (TX_Message[0] == 82 && RX_Message[0] == 82){
-      __atomic_store_n(&currentStepSize, 0, __ATOMIC_RELAXED);
-    }
+    localCurrentStepSize = (localCurrentStepSizeR +  sum);
+    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+
+
+    // if (TX_Message[0] == 82 && RX_Message[0] == 82){
+    //   __atomic_store_n(&currentStepSize, 0, __ATOMIC_RELAXED);
+    // }
 
     // Serial.println(TX_Message[2]);
     std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
@@ -284,6 +401,7 @@ void scanKeysTask(void * pvParameters){
     // Serial.println(TX_Message[0]);
       
     decodeKnob3();
+    decodeKnob2();
     // Serial.print("local:");
     // Serial.println(TX_Message[2]);
       
@@ -305,15 +423,23 @@ void displayUpdateTask(void *  pvParameters){
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
     // u8g2.drawStr(2,10,"Hello World!"); // write something to the internal memory
-    std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2] + keyStrArray[3];
-    u8g2.drawStr(2,10, con.c_str());
     
-    u8g2.setCursor(66,30);
+    u8g2.drawStr(2,10, keyStr.c_str());
+    
+    u8g2.setCursor(2,20);
     xSemaphoreTake(RXMutex, portMAX_DELAY);
     u8g2.print((char) RX_Message[0]);
     u8g2.print(RX_Message[1]);
     u8g2.print(RX_Message[2]);
     xSemaphoreGive(RXMutex);
+
+    // u8g2.setCursor(2,40);
+    std::string vol = "Vol: " + std::to_string(knob3Rotation);
+    u8g2.drawStr(66,30, vol.c_str());
+    std::string octave = "Octave: " + std::to_string(OCTAVE);
+    u8g2.drawStr(2,30, octave.c_str());
+
+
     // while (CAN_CheckRXLevel()){
 	  //   // CAN_RX(ID, RX_Message);
     // }
@@ -342,22 +468,22 @@ void decodeTask(void *  pvParameters){
     // Serial.print("Global: ");
     // Serial.println(RX_Message[1]);
 
-    xSemaphoreTake(RXMutex, portMAX_DELAY);
-    for (int i = 0; i < 4; i++){
-      // detect press messages
-      if (RX_Message[0] == 80){
-        // Serial.println("Pressed");
-        localCurrentStepSize = stepSizes[RX_Message[2]] ;
-        localCurrentStepSize << (RX_Message[1] - 4);
-        // __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
-      }
-      // detect release messages
-      else if (RX_Message[0] == 82){
-        // currentStepSize = 0;
-        // Serial.println("Released");
-      }
-    }
-    xSemaphoreGive(RXMutex);
+    // xSemaphoreTake(RXMutex, portMAX_DELAY);
+    // for (int i = 0; i < 4; i++){
+    //   // detect press messages
+    //   if (RX_Message[0] == 80){
+    //     // Serial.println("Pressed");
+    //     localCurrentStepSize = stepSizes[RX_Message[2]] ;
+    //     localCurrentStepSize << (RX_Message[1] - 4);
+    //     // __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+    //   }
+    //   // detect release messages
+    //   else if (RX_Message[0] == 82){
+    //     // currentStepSize = 0;
+    //     // Serial.println("Released");
+    //   }
+    // }
+    // xSemaphoreGive(RXMutex);
   
   }  
 }
@@ -471,7 +597,24 @@ void setup() {
     NULL,			/* Parameter passed into the task */
     2,			/* Task priority */
     &CAN_TXHandle );  /* Pointer to store the task handle */
+  
 
+  // Serial.print((uint32_t)((1ull << 32) * 261.63 / 22000)); //C4
+  // Serial.println((uint32_t)((1ull << 32) * 277.18 / 22000)); //C#4
+  // Serial.println((uint32_t)((1ull << 32) * 311.13 / 22000)); //D#4
+  // Serial.println((uint32_t)((1ull << 32) * 329.63 / 22000)); //E4
+  // Serial.println((uint32_t)((1ull << 32) * 293.66 / 22000); //D4
+  // Serial.println((uint32_t)((1ull << 32) * 349.23 / 22000); //F4
+  // Serial.println((uint32_t)((1ull << 32) * 369.99 / 22000);//F#4
+  // Serial.println((uint32_t)((1ull << 32) * 392.00 / 22000));//G4
+  // Serial.println((uint32_t)((1ull << 32) * 415.30 / 22000));//G#4
+  // Serial.println((uint32_t)((1ull << 32) * 440.00 / 22000)); //A4
+  // Serial.println((uint32_t)((1ull << 32) * 466.16 / 22000));//A#4
+  // Serial.println((uint32_t)((1ull << 32) * 493.88 / 22000)); //B4)
+
+  for (int i = 0; i < 11 ; i++) {
+    Serial.println (stepSizes[i]);
+  }
 
   vTaskStartScheduler();
 
@@ -479,6 +622,6 @@ void setup() {
 }
 
 void loop() {
-  Serial.println(currentStepSize);
-
+  // Serial.println(currentStepSize);
+  // delay (1);
 }
