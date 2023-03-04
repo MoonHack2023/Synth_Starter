@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <U8g2lib.h>
 #include <bitset>
-
+#include <math.h>
 // Define the max() macro
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
@@ -107,13 +107,22 @@ const uint32_t stepSizes [] = {
   (uint32_t)((1ull << 32) * 493.88 / 22000), //B4
 };
 
+const int LUT_SIZE = 1024;
+int32_t LUT[LUT_SIZE];
+
+void sine_LUT(){
+    for (int i = 0; i < LUT_SIZE; i++)
+  {
+      LUT[i] = (int32_t)(127 * sinf(2.0 * PI * (float)i / LUT_SIZE)) + 128;
+  }
+}
+
 void sampleISR() {
   static uint32_t phaseAcc = 0;
   phaseAcc += currentStepSize;
-  float phase = (float)phaseAcc / (float)(1ull << 32);
-  float sineValue = sin(2.0 * PI * phase);
-  int32_t Vout = (int32_t)(sineValue * 127.0) + 128;
-  analogWrite(OUTR_PIN, Vout);
+  uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
+  int32_t sineValue = LUT[index];
+  analogWrite(OUTR_PIN, sineValue);
 }
 
 
@@ -147,6 +156,8 @@ void setup() {
   //Initialise UART
   Serial.begin(9600);
   Serial.println("Hello World");
+
+  sine_LUT();
 
   TIM_TypeDef *Instance = TIM1;
   HardwareTimer *sampleTimer = new HardwareTimer(Instance);
@@ -221,6 +232,7 @@ void loop() {
     // Serial.println(keyStrArray[2].c_str());
 
     std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2];
+
 
     u8g2.drawStr(2,20, con.c_str());
 
