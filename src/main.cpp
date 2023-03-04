@@ -6,6 +6,9 @@
 #include <ES_CAN.h>
 #include <iostream>
 #include <string>
+#define _USE_MATH_DEFINES
+#include <cmath>
+
 // Define the max() macro
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
@@ -190,7 +193,7 @@ void decodeKnob2(){
 
 const uint32_t stepSizes [] = {
 
-  51076922, //C4
+      51076922, //C4
       54112683, //C#4
       57330004, //D4
       60740598, //D#4
@@ -203,6 +206,32 @@ const uint32_t stepSizes [] = {
       91006452, //A#4
       96426316, //B4
 };
+
+const int32_t freq[12] = {262, 277, 294, 311, 330, 349, 367, 392, 415, 440, 466, 494};
+
+//Sine wave
+const int LUT_SIZE = 1024;
+const int Sampling_Freq = 22000;
+int32_t LUT[LUT_SIZE];
+uint16_t diff[12];
+
+void sine(){
+  for (int i = 0 ; i < LUT_SIZE ; i++) {
+    //127 and 128 are the amplitude 
+    // we want value = sin(increment * i) * amplitude + amplitude;
+    LUT[i] = (int32_t)(127 * sinf(2.0 * PI * (float)i / LUT_SIZE)) + 128;
+    // it produces a sine wave moving from 1 to 255 
+  }
+  float diff_float[12];
+  for (int i = 0; i < 12; i++)
+{
+    diff_float[i] = (freq[i] * LUT_SIZE) / Sampling_Freq;
+    diff[i] = diff_float[i];
+    //diff[0] = 12, diff[1] = 13 ... from 12 to 20 
+    // contains the phase increments needed to generate the frequencies of the 12 notes in the musical scale
+    // phase increment is the amount by which the phase of a waveform is incremented for each sample.
+}
+}
 
 // Create sound
 void sampleISR() {
@@ -481,8 +510,6 @@ void setup() {
   sampleTimer->resume();
 
   
-
-  
   TaskHandle_t scanKeysHandle = NULL;
   xTaskCreate(
     scanKeysTask,		/* Function that implements the task */
@@ -524,10 +551,20 @@ void setup() {
 
   
   vTaskStartScheduler();
+
+  sine();
 }
 
 void loop() {
-    // Serial.println(RX_Message[3]);
-    // Serial.println(finall.c_str());
+  // Generate a sine wave of the desired frequency and duration
+  int num_samples = 1000 * Sampling_Freq / 1000; // calculate the number of samples to generate
+  int phase_increment = (int)((float)LUT_SIZE * (float)440 / (float)Sampling_Freq); // calculate the phase increment for the desired frequency
+  int phase_accumulator = 0; // initialize the phase accumulator to zero
+  for (int i = 0; i < num_samples; i++) {
+    int value = LUT[phase_accumulator >> 20]; // get the current value from the lookup table
+    analogWrite(OUTR_PIN, value); // write the value to pin 9 (PWM output)
+    phase_accumulator += diff[phase_increment >> 8]; // increment the phase accumulator by the phase increment
+  }
+  delay(100); // wait for a short time before generating the next sine wave
 
 }
