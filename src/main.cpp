@@ -2,6 +2,8 @@
 #include <U8g2lib.h>
 #include <bitset>
 
+// Define the max() macro
+#define max(a, b) ((a) > (b) ? (a) : (b))
 
 //Constants
   const uint32_t interval = 100; //Display update interval
@@ -37,6 +39,9 @@
 //Display driver object
 U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
 
+//Check current step size
+volatile uint32_t currentStepSize;
+
 //Function to set outputs using key matrix
 void setOutMuxBit(const uint8_t bitIdx, const bool value) {
       digitalWrite(REN_PIN,LOW);
@@ -48,6 +53,69 @@ void setOutMuxBit(const uint8_t bitIdx, const bool value) {
       delayMicroseconds(2);
       digitalWrite(REN_PIN,LOW);
 }
+
+  // Function to concatenate bits
+  uint8_t concatenateBits(int c0, int c1, int c2, int c3){
+    uint8_t result = 0;
+    result |= (c0 << 3);
+    result |= (c1 << 2);
+    result |= (c2 << 1);
+    result |= c3;
+    return result;
+  }
+
+  //Function to read the inputs from the four columns of the switch matrix (C0,1,2,3) and return the four bits concatenated together as a single byte
+  uint8_t readCols(){
+
+  int c0state = digitalRead(C0_PIN);
+  int c1state = digitalRead(C1_PIN);
+  int c2state = digitalRead(C2_PIN);
+  int c3state = digitalRead(C3_PIN);
+
+  // Call the concatenateBits() function with the read states
+  uint8_t cols = concatenateBits(c0state, c1state, c2state, c3state);
+  return cols;
+}
+
+//Select a given row of the switch matrix by setting the value of each row select address pin 
+void setRow(uint8_t rowIdx){
+  digitalWrite(REN_PIN,LOW);
+  digitalWrite(RA0_PIN, rowIdx & 0b001);
+  digitalWrite(RA1_PIN, rowIdx & 0b010);
+  digitalWrite(RA2_PIN, rowIdx & 0b100);
+  digitalWrite(REN_PIN,HIGH);
+}
+
+const uint32_t stepSizes [] = {
+  /*
+  1ull << 32 shift the value 1 to the left by 32 bits,setting the 33rd bit to 1. 
+  This creates a 64-bit binary number of 2ˆ32
+  Using this to obtain a constant that represents one full cycle of a sine wave in the phase accumulator
+  use 1ull << 32 instead of 2^32 directly to ensure that the result is a 64-bit integer with the most significant bit set to 1.
+  */
+  (uint32_t)((1ull << 32) * 261.63 / 22000), //C4
+  (uint32_t)((1ull << 32) * 277.18 / 22000), //C#4
+  (uint32_t)((1ull << 32) * 293.66 / 22000), //D4
+  (uint32_t)((1ull << 32) * 311.13 / 22000), //D#4
+  (uint32_t)((1ull << 32) * 329.63 / 22000), //E4
+  (uint32_t)((1ull << 32) * 349.23 / 22000), //F4
+  (uint32_t)((1ull << 32) * 369.99 / 22000), //F#4
+  (uint32_t)((1ull << 32) * 392.00 / 22000), //G4
+  (uint32_t)((1ull << 32) * 415.30 / 22000), //G#4
+  (uint32_t)((1ull << 32) * 440.00 / 22000), //A4
+  (uint32_t)((1ull << 32) * 466.16 / 22000), //A#4
+  (uint32_t)((1ull << 32) * 493.88 / 22000), //B4
+};
+
+void sampleISR() {
+  static uint32_t phaseAcc = 0;
+  phaseAcc += currentStepSize;
+  float phase = (float)phaseAcc / (float)(1ull << 32);
+  float sineValue = sin(2.0 * PI * phase);
+  int32_t Vout = (int32_t)(sineValue * 127.0) + 128;
+  analogWrite(OUTR_PIN, Vout);
+}
+
 
 void setup() {
   // put your setup code here, to run once:
@@ -79,123 +147,92 @@ void setup() {
   //Initialise UART
   Serial.begin(9600);
   Serial.println("Hello World");
-}
 
-uint8_t readCols(){
-  int c0, c1, c2, c3;
-  uint8_t res;
-  // digitalWrite(RA0_PIN, LOW);
-  // digitalWrite(RA1_PIN, LOW);
-  // digitalWrite(RA2_PIN, LOW);
-  // digitalWrite(REN_PIN, HIGH);
-  c0 = digitalRead(C0_PIN);
-  c1 = digitalRead(C1_PIN);
-  c2 = digitalRead(C2_PIN);
-  c3 = digitalRead(C3_PIN);
-  res = 0;
-  res |= (c0 << 3);
-  res |= (c1 << 2);
-  res |= (c2 << 1);
-  res |= c3;
-
-  return(res);
-}
-
-void setRow(uint8_t rowIdx){
-  digitalWrite(REN_PIN, LOW);
-  if (rowIdx == 0){
-    digitalWrite(RA0_PIN, LOW);
-    digitalWrite(RA1_PIN, LOW);
-    digitalWrite(RA2_PIN, LOW);
-  }
-  else if (rowIdx == 1){
-    digitalWrite(RA0_PIN, HIGH);
-    digitalWrite(RA1_PIN, LOW);
-    digitalWrite(RA2_PIN, LOW);
-  }
-  else if (rowIdx == 2){
-    digitalWrite(RA0_PIN, LOW);
-    digitalWrite(RA1_PIN, HIGH);
-    digitalWrite(RA2_PIN, LOW);
-  }
-  else if (rowIdx == 3){
-    digitalWrite(RA0_PIN, HIGH);
-    digitalWrite(RA1_PIN, HIGH);
-    digitalWrite(RA2_PIN, LOW);
-  }
-  else if (rowIdx == 4){
-    digitalWrite(RA0_PIN, LOW);
-    digitalWrite(RA1_PIN, LOW);
-    digitalWrite(RA2_PIN, HIGH);
-  }
-  else if (rowIdx == 5){
-    digitalWrite(RA0_PIN, HIGH);
-    digitalWrite(RA1_PIN, LOW);
-    digitalWrite(RA2_PIN, HIGH);
-  }
-  else if (rowIdx == 6){
-    digitalWrite(RA0_PIN, LOW);
-    digitalWrite(RA1_PIN, HIGH);
-    digitalWrite(RA2_PIN, HIGH);
-  }
-  else if (rowIdx == 7){
-    digitalWrite(RA0_PIN, HIGH);
-    digitalWrite(RA1_PIN, HIGH);
-    digitalWrite(RA2_PIN, HIGH);
-  }
-  digitalWrite(REN_PIN, HIGH);
-
+  TIM_TypeDef *Instance = TIM1;
+  HardwareTimer *sampleTimer = new HardwareTimer(Instance);
+  sampleTimer->setOverflow(22000, HERTZ_FORMAT);
+  sampleTimer->attachInterrupt(sampleISR);
+  sampleTimer->resume();
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
   static uint32_t next = millis();
   static uint32_t count = 0;
-
+  uint8_t keyArray[7];
+  std::string keyStrArray[7];
   if (millis() > next) {
     next += interval;
-    uint8_t keyArray[7];
-    std::string keyStrArray[7];
+
     //Update display
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-    u8g2.drawStr(2,10,"Hello World!");  // write something to the internal memory
-    int rowIdx = 0;
-    for (int i = 0; i < 3; i++){
-      setRow(i);
-      delayMicroseconds(3);
-      uint8_t keys = readCols();
-      std::bitset<4> myBinary(keys);
-      std::string binaryString = myBinary.to_string();
-      binaryString.c_str();
-      keyStrArray[i] = binaryString;
-      
+    u8g2.drawStr(2,10,"Helllo World!"); // write something to the internal memory
+
+    const int NUM_ROWS = 3; // define a constant for the number of rows
+    for (int row = 0; row < NUM_ROWS; row++) {
+        setRow(row);
+        delayMicroseconds(3);
+        uint8_t keys = readCols();
+        std::bitset<4> keyBits(keys);
+        std::string keyString = keyBits.to_string();
+        keyStrArray[row] = keyString;
+        keyArray[row] = keys;
     }
-  
+
+    const std::string keyValues[NUM_ROWS][4] = {
+      {"0111", "1011", "1101", "1110"},
+      {"0111", "1011", "1101", "1110"},
+      {"0111", "1011", "1101", "1110"}
+    };
+    const std::string noteNames[NUM_ROWS][4] = {
+      {"C4", "C#4", "D4", "D#4"},
+      {"E4", "F4", "F#4", "G4"},
+      {"G#4", "A4", "A#4", "B4"}
+    };
+    
+    uint32_t localCurrentStepSize = 0; // using a local variable for the step size and set to 0 (no output if no keys are pressed)
+
+    for (int row = 0; row < NUM_ROWS; row++) {
+      for (int col = 0; col < 4; col++) {
+        if (keyStrArray[row] == keyValues[row][col]) {
+          localCurrentStepSize = stepSizes[row * 4 + col];
+          Serial.println(localCurrentStepSize);
+          u8g2.drawStr(2, 30, noteNames[row][col].c_str());
+          break; // exit the inner loop once a key has been found
+        }
+      }
+    }
+
+    currentStepSize = localCurrentStepSize; // copy the final value to the global variable
+
+    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+
+    if(keyArray[0] == 7) {
+      currentStepSize =  stepSizes[0];
+      Serial.println(currentStepSize);
+    }
+    
     // Serial.println(keys);
     u8g2.setCursor(2,20);
-    // u8g2.print(keyArray[0], BIN);
-    // u8g2.print(keyArray[1], BIN);
-    // u8g2.print(keyArray[2], BIN);
-    Serial.print(keyStrArray[0].c_str());
-    Serial.print(keyStrArray[1].c_str());
-    Serial.println(keyStrArray[2].c_str());
+
+    // Serial.print(keyStrArray[0].c_str());
+    // Serial.print(keyStrArray[1].c_str());
+    // Serial.println(keyStrArray[2].c_str());
 
     std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2];
 
     u8g2.drawStr(2,20, con.c_str());
-    // u8g2.drawStr(10,20, keyStrArray[1].c_str());
-    // u8g2.drawStr(10,20, keyStrArray[2].c_str());
-    //u8g2.setCursor(2,20);
-    //u8g2.print(count++);
+
+    // transfer internal memory to the display
+    u8g2.sendBuffer(); 
+ 
+      
     
-
-
-
-    u8g2.sendBuffer();          // transfer internal memory to the display
-
     //Toggle LED
     digitalToggle(LED_BUILTIN);
-    
+    setRow(1);
+    // printFullBin(readCols());
   }
+
 }
