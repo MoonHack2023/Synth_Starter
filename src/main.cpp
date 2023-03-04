@@ -361,7 +361,14 @@ void scanKeysTask(void * pvParameters){
     uint32_t sumMaster = chords(keyStr,OCTAVE);
     uint32_t sumSlave = chords(RX_keyStr,RX_Message[1]);
 
-    localCurrentStepSize = (sumSlave +  sumMaster) / (countZero(RX_keyStr) + countZero(keyStr));
+    if (localCurrentStepSize != 0) {
+      localCurrentStepSize = (sumSlave +  sumMaster) / (countZero(RX_keyStr) + countZero(keyStr));
+    }
+    else{
+      localCurrentStepSize = (sumSlave +  sumMaster);
+    }
+
+    
     __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
 
