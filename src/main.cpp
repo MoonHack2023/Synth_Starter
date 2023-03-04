@@ -6,6 +6,8 @@
 #include <ES_CAN.h>
 #include <iostream>
 #include <string>
+#include <math.h>
+
 // Define the max() macro
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
@@ -125,6 +127,7 @@ void setRow(uint8_t rowIdx){
   digitalWrite(REN_PIN,HIGH);
 }
 
+// Decode the rightest Knob
 void decodeKnob3(){
   std::string currentKnob3 = keyStrArray[3].substr(0, 2); 
   //Serial.println(keyStrArray[3]);
@@ -155,6 +158,8 @@ void decodeKnob3(){
 
   prevKnob3 = currentKnob3;
 }
+
+// Decode the rightest Knob
 void decodeKnob2(){
   std::string currentKnob2 = keyStrArray[3].substr(2, 4); 
   //Serial.println(keyStrArray[3]);
@@ -204,15 +209,38 @@ const uint32_t stepSizes [] = {
       96426316, //B4
 };
 
+const int LUT_SIZE = 1024;
+int32_t LUT[LUT_SIZE];
+
+void sine_LUT() {
+  const float step = 2.0 * PI / LUT_SIZE;
+  for (int i = 0; i < LUT_SIZE; i++) {
+    float angle = i * step;
+    LUT[i] = (int32_t)(127.0f * sinf(angle)) + 128;
+  }
+}
+
+// // Sawtooth wave
+// void sampleISR() {
+//   static uint32_t phaseAcc = 0;
+//   phaseAcc += currentStepSize;
+//   int32_t Vout = (phaseAcc >> 24) - 128;
+//   Vout = Vout >> (8 - knob3Rotation);
+//   analogWrite(OUTR_PIN, (Vout + 128));
+// }
+
+//Sine wave
 void sampleISR() {
   static uint32_t phaseAcc = 0;
   phaseAcc += currentStepSize;
-  int32_t Vout = (phaseAcc >> 24) - 128;
-  Vout = Vout >> (8 - knob3Rotation);
-  analogWrite(OUTR_PIN, (Vout + 128));
+  uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
+  int32_t sineValue = LUT[index];
+  sineValue = sineValue >> (8 - knob3Rotation);
+  analogWrite(OUTR_PIN, sineValue);
 }
 
 
+// Create chords by summing the currentstepsize of each key 
 uint32_t chords(std::string keyStr, int OCTAVE){
   int zeroCount = 0;
   uint32_t sum = 0;
@@ -247,6 +275,7 @@ uint32_t countZero(std::string keyStr){
   return zeroCount;
 }
 
+// Everything that's relevant to scanning the Keys
 void scanKeysTask(void * pvParameters){
   Serial.println("SCAN");
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
@@ -353,6 +382,7 @@ void scanKeysTask(void * pvParameters){
   }
 }
 
+// Display it on the screen
 void displayUpdateTask(void *  pvParameters){
   // Serial.println("DISPLAY");
   const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
@@ -471,6 +501,7 @@ void setup() {
   //Initialise UART
   Serial.begin(9600);
   // Serial.println("Hello World");
+  sine_LUT();
 
   TIM_TypeDef *Instance = TIM1;
   HardwareTimer *sampleTimer = new HardwareTimer(Instance);
@@ -480,7 +511,6 @@ void setup() {
   }
   sampleTimer->resume();
 
-  
 
   
   TaskHandle_t scanKeysHandle = NULL;
