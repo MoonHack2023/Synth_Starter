@@ -216,12 +216,22 @@ void sine_LUT(){
   }
 }
 
+//Sawtooth wave
+// void sampleISR() {
+//   static uint32_t phaseAcc = 0;
+//   phaseAcc += currentStepSize;
+//   int32_t Vout = (phaseAcc >> 24) - 128;
+//   Vout = Vout >> (8 - knob3Rotation);
+//   analogWrite(OUTR_PIN, (Vout + 128));
+// }
 
+//Sine wave
 void sampleISR() {
   static uint32_t phaseAcc = 0;
   phaseAcc += currentStepSize;
   uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
   int32_t sineValue = LUT[index];
+  sineValue = sineValue >> (8 - knob3Rotation);
   analogWrite(OUTR_PIN, sineValue);
 }
 
