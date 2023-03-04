@@ -191,8 +191,8 @@ void decodeKnob2(){
 }
 
 const uint32_t stepSizes [] = {
-
-  51076922, //C4
+  
+      51076922, //C4
       54112683, //C#4
       57330004, //D4
       60740598, //D#4
@@ -209,14 +209,16 @@ const uint32_t stepSizes [] = {
 const int LUT_SIZE = 1024;
 int32_t LUT[LUT_SIZE];
 
-void sine_LUT(){
-    for (int i = 0; i < LUT_SIZE; i++)
-  {
-      LUT[i] = (int32_t)(127 * sinf(2.0 * PI * (float)i / LUT_SIZE)) + 128;
+void sine_LUT() {
+  const float step = 2.0 * PI / LUT_SIZE;
+  for (int i = 0; i < LUT_SIZE; i++) {
+    float angle = i * step;
+    LUT[i] = (int32_t)(127.0f * sinf(angle)) + 128;
   }
 }
 
-//Sawtooth wave
+
+// // Sawtooth wave
 // void sampleISR() {
 //   static uint32_t phaseAcc = 0;
 //   phaseAcc += currentStepSize;
@@ -531,9 +533,6 @@ void setup() {
     NULL,			/* Parameter passed into the task */
     1,			/* Task priority */
     &CAN_TXHandle );  /* Pointer to store the task handle */
-
-  
-
 
   
   vTaskStartScheduler();
