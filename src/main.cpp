@@ -6,8 +6,7 @@
 #include <ES_CAN.h>
 #include <iostream>
 #include <string>
-#define _USE_MATH_DEFINES
-#include <cmath>
+#include <math.h>
 
 // Define the max() macro
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -193,7 +192,7 @@ void decodeKnob2(){
 
 const uint32_t stepSizes [] = {
 
-      51076922, //C4
+  51076922, //C4
       54112683, //C#4
       57330004, //D4
       60740598, //D#4
@@ -207,51 +206,31 @@ const uint32_t stepSizes [] = {
       96426316, //B4
 };
 
-const int32_t freq[12] = {262, 277, 294, 311, 330, 349, 367, 392, 415, 440, 466, 494};
-
-//Sine wave
 const int LUT_SIZE = 1024;
-const int Sampling_Freq = 22000;
 int32_t LUT[LUT_SIZE];
-uint16_t diff[12];
 
-void sine(){
-  for (int i = 0 ; i < LUT_SIZE ; i++) {
-    //127 and 128 are the amplitude 
-    // we want value = sin(increment * i) * amplitude + amplitude;
-    LUT[i] = (int32_t)(127 * sinf(2.0 * PI * (float)i / LUT_SIZE)) + 128;
-    // it produces a sine wave moving from 1 to 255 
+void sine_LUT(){
+    for (int i = 0; i < LUT_SIZE; i++)
+  {
+      LUT[i] = (int32_t)(127 * sinf(2.0 * PI * (float)i / LUT_SIZE)) + 128;
   }
-  float diff_float[12];
-  for (int i = 0; i < 12; i++)
-{
-    diff_float[i] = (freq[i] * LUT_SIZE) / Sampling_Freq;
-    diff[i] = diff_float[i];
-    //diff[0] = 12, diff[1] = 13 ... from 12 to 20 
-    // contains the phase increments needed to generate the frequencies of the 12 notes in the musical scale
-    // phase increment is the amount by which the phase of a waveform is incremented for each sample.
-}
 }
 
-// Create sound
+
 void sampleISR() {
   static uint32_t phaseAcc = 0;
   phaseAcc += currentStepSize;
-  int32_t Vout = (phaseAcc >> 24) - 128;
-  Vout = Vout >> (8 - knob3Rotation);
-  analogWrite(OUTR_PIN, (Vout + 128));
+  uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
+  int32_t sineValue = LUT[index];
+  analogWrite(OUTR_PIN, sineValue);
 }
 
 
-// Generate chords by summing the keys
 uint32_t chords(std::string keyStr, int OCTAVE){
   int zeroCount = 0;
   uint32_t sum = 0;
   uint32_t localCurrentStepSize = 0;
-  // currentFreq = 440 * currentFreq <<  ((RX_Message[1]-9) / 12);
-  
   for (int i = 0; i < 12; i++){
-    // When a specific key is pressed, e.g. 0111111111111000 means the first key is pressed
     if (keyStr[i] == '0'){
       zeroCount++;
       localCurrentStepSize = stepSizes[i];
@@ -271,7 +250,6 @@ uint32_t chords(std::string keyStr, int OCTAVE){
   return sum;
 }
 
-// Everything about scanning of the the keys 
 void scanKeysTask(void * pvParameters){
   Serial.println("SCAN");
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
@@ -334,7 +312,7 @@ void scanKeysTask(void * pvParameters){
     TX_Message[3] = lo_val;
     TX_Message[4] = hi_val;
   }
-  // Decoding the messages
+  
   if (master){
     // Serial.println("MASTER");
     xSemaphoreTake(RXMutex, portMAX_DELAY);
@@ -378,7 +356,6 @@ void scanKeysTask(void * pvParameters){
   }
 }
 
-//Display everything 
 void displayUpdateTask(void *  pvParameters){
   // Serial.println("DISPLAY");
   const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
@@ -413,7 +390,6 @@ void displayUpdateTask(void *  pvParameters){
   }  
 }
 
-// Receiving the R/P message from slave by the master
 void decodeTask(void *  pvParameters){
   Serial.println("DECODE");
   uint32_t ID = 0x123;
@@ -434,7 +410,6 @@ void decodeTask(void *  pvParameters){
   }  
 }
 
-// Receive
 void CAN_RX_ISR (void) {
 	uint8_t RX_Message_ISR[8];
 	uint32_t ID = 0x123;
@@ -452,7 +427,6 @@ void CAN_TX_Task (void * pvParameters) {
 	}
 }
 
-//Transmit 
 void CAN_TX_ISR (void) {
 	xSemaphoreGiveFromISR(CAN_TX_Semaphore, NULL);
 }
@@ -500,7 +474,7 @@ void setup() {
   //Initialise UART
   Serial.begin(9600);
   // Serial.println("Hello World");
-
+  sine_LUT();
   TIM_TypeDef *Instance = TIM1;
   HardwareTimer *sampleTimer = new HardwareTimer(Instance);
   sampleTimer->setOverflow(22000, HERTZ_FORMAT);
@@ -508,6 +482,8 @@ void setup() {
     sampleTimer->attachInterrupt(sampleISR);
   }
   sampleTimer->resume();
+
+  
 
   
   TaskHandle_t scanKeysHandle = NULL;
@@ -551,20 +527,10 @@ void setup() {
 
   
   vTaskStartScheduler();
-
-  sine();
 }
 
 void loop() {
-  // Generate a sine wave of the desired frequency and duration
-  int num_samples = 1000 * Sampling_Freq / 1000; // calculate the number of samples to generate
-  int phase_increment = (int)((float)LUT_SIZE * (float)440 / (float)Sampling_Freq); // calculate the phase increment for the desired frequency
-  int phase_accumulator = 0; // initialize the phase accumulator to zero
-  for (int i = 0; i < num_samples; i++) {
-    int value = LUT[phase_accumulator >> 20]; // get the current value from the lookup table
-    analogWrite(OUTR_PIN, value); // write the value to pin 9 (PWM output)
-    phase_accumulator += diff[phase_increment >> 8]; // increment the phase accumulator by the phase increment
-  }
-  delay(100); // wait for a short time before generating the next sine wave
+    // Serial.println(RX_Message[3]);
+    // Serial.println(finall.c_str());
 
 }
