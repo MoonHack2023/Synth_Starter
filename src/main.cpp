@@ -120,13 +120,24 @@ void sine_LUT(){
 }
 
 void sampleISR() {
-  static uint32_t phaseAcc = 0;
-  phaseAcc += currentStepSize;
-  uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
-  int32_t sineValue = LUT[index];
-  analogWrite(OUTR_PIN, sineValue);
+  static uint32_t phaseAcc1 = 0;
+  static uint32_t phaseAcc2 = 0;
+  phaseAcc1 += currentStepSize;
+  phaseAcc2 += currentStepSize * 2; // change the frequency of the second sine wave
+  uint32_t index1 = phaseAcc1 >> 22; // scale the phase accumulator to fit the lookup table size
+  uint32_t index2 = phaseAcc2 >> 22;
+  int32_t sineValue1 = LUT[index1];
+  int32_t sineValue2 = LUT[index2];
+  analogWrite(OUTR_PIN, (sineValue1 + sineValue2) / 2); // add the two sine waves together and divide by 2 to avoid clipping
 }
 
+// void sampleISR() {
+//   static uint32_t phaseAcc = 0;
+//   phaseAcc += currentStepSize;
+//   uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
+//   int32_t sineValue = LUT[index];
+//   analogWrite(OUTR_PIN, sineValue);
+// }
 
 void setup() {
   // put your setup code here, to run once:
