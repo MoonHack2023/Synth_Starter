@@ -48,17 +48,22 @@ U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
 //Check current step size
 volatile uint32_t currentStepSize;
 volatile uint8_t keyArray[7];
-const int NUM_ROWS = 4; // define a constant for the number of rows
+const int NUM_ROWS = 7; // define a constant for the number of rows
 std::string keyStrArray[7];
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t RXMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
 volatile int rotationVar = 0;
 volatile int octaveVar = 0;
+volatile int masVar = 0;
 std::string prevKnob3 = "00";
 std::string prevKnob2 = "00";
+std::string prevKnob1 = "00";
+std::string prevKnob0 = "00";
 int knob3Rotation = 0;
 int knob2Rotation = 0;
+int knob1Rotation = 0;
+int knob0Rotation = 0;
 QueueHandle_t msgInQ;
 uint8_t RX_Message[8]={0};
 QueueHandle_t msgOutQ;
@@ -66,7 +71,7 @@ std::string prevKeyArray[7] = {"1111", "1111", "1111", "1111", "1111", "1111", "
 int OCTAVE = 4;
 uint8_t GLOBAL_RX_Message[8]={0};
 std::string keyStr = "0000";
-bool master = true;
+volatile bool master = true;
 std::string RX_keyStr = "0000";
 
 // volatile uint32_t localCurrentStepSize;
@@ -149,11 +154,16 @@ void decodeKnob3(){
   }
   knob3Rotation += rotationVar;
 
-  if (knob3Rotation > 8){
-    knob3Rotation = 8;
-  }
-  else if (knob3Rotation < 0){
+  if (!master){
     knob3Rotation = 0;
+  }
+  else{
+    if (knob3Rotation > 8){
+      knob3Rotation = 8;
+    }
+    else if (knob3Rotation < 0){
+      knob3Rotation = 0;
+    }
   }
 
   prevKnob3 = currentKnob3;
@@ -188,9 +198,49 @@ void decodeKnob2(){
   else if (knob2Rotation < 0){
     knob2Rotation = 0;
   }
-
+  //Serial.println("IN KNOB 2");
   OCTAVE = knob2Rotation;
   prevKnob2 = currentKnob2;
+}
+
+void decodeKnob1(){
+  std::string currentKnob1 = keyStrArray[4].substr(0, 2); 
+  //Serial.println(keyStrArray[3]);
+
+  if (prevKnob1 == "00" && currentKnob1 == "01"){
+    masVar = -1;
+  }
+  else if (prevKnob1 == "01" && currentKnob1 == "00"){
+    masVar = 1;
+  }
+  else if (prevKnob1 == "10" && currentKnob1 == "11"){
+    masVar = 1;
+  }
+  else if (prevKnob1 == "11" && currentKnob1 == "10"){
+    masVar = -1;
+  }
+  else{
+    masVar = 0;
+  }
+
+  knob1Rotation += masVar;
+
+  if (knob1Rotation > 1){
+    knob1Rotation = 1;
+  }
+  else if (knob1Rotation < 0){
+    knob1Rotation = 0;
+  }
+  Serial.println("IN DECODE");
+  
+  if (knob1Rotation == 1){
+    master = true;
+  }
+  else{
+    master = false;
+  }
+
+  prevKnob1 = currentKnob1;
 }
 
 const uint32_t stepSizes [] = {
@@ -277,6 +327,7 @@ uint32_t countZero(std::string keyStr){
 
 // Everything that's relevant to scanning the Keys
 void scanKeysTask(void * pvParameters){
+  decodeKnob1();
   Serial.println("SCAN");
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -296,7 +347,7 @@ void scanKeysTask(void * pvParameters){
       keyStrArray[row] = keyString;
       keyArray[row] = keys;
     }
-    keyStr = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2] + keyStrArray[3];
+    keyStr = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2] + keyStrArray[3]; // + keyStrArray[4] + keyStrArray[5] + keyStrArray[6];
     
     // int zeroCount = 0;
     // uint32_t sum = 0;
@@ -381,6 +432,8 @@ void scanKeysTask(void * pvParameters){
 
   decodeKnob3();
   decodeKnob2();
+  decodeKnob1();
+  
     
     // std::string currentKnob3 = keyStrArray[3].substr(0, 2); 
     // Serial.println(keyStrArray[3].substr(0,2).c_str());
@@ -391,7 +444,7 @@ void scanKeysTask(void * pvParameters){
 
 // Display it on the screen
 void displayUpdateTask(void *  pvParameters){
-  // Serial.println("DISPLAY");
+  Serial.println("DISPLAY");
   const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint32_t ID = 0x123;
@@ -414,11 +467,11 @@ void displayUpdateTask(void *  pvParameters){
     // xSemaphoreGive(RXMutex);
      // u8g2.setCursor(2,40);
     std::string vol = "Vol: " + std::to_string(knob3Rotation);
-    u8g2.drawStr(66,30, vol.c_str());
-    std::string octave = "Octave: " + std::to_string(OCTAVE);
+    u8g2.drawStr(40,30, vol.c_str());
+    std::string octave = "Oct: " + std::to_string(OCTAVE);
     u8g2.drawStr(2,30, octave.c_str());
-
-
+    u8g2.drawStr(90,30, master ? "M": "S");
+    
     u8g2.sendBuffer();
     
   }  
@@ -465,6 +518,10 @@ void CAN_TX_ISR (void) {
 	xSemaphoreGiveFromISR(CAN_TX_Semaphore, NULL);
 }
 
+// void change_setup_Task (void * pvParameters){
+//   keyStrArray
+// }
+
 void setup() {
   // put your setup code here, to run once:
   msgInQ = xQueueCreate(36,8);
@@ -499,9 +556,9 @@ void setup() {
 
   CAN_Init(false);
   CAN_RegisterRX_ISR(CAN_RX_ISR);
-  if (!master){
-    CAN_RegisterTX_ISR(CAN_TX_ISR);
-  }
+  // if (!master){
+  CAN_RegisterTX_ISR(CAN_TX_ISR);
+  // }
   setCANFilter(0x123,0x7ff);
   CAN_Start();
 
@@ -513,9 +570,9 @@ void setup() {
   TIM_TypeDef *Instance = TIM1;
   HardwareTimer *sampleTimer = new HardwareTimer(Instance);
   sampleTimer->setOverflow(22000, HERTZ_FORMAT);
-  if (master){
-    sampleTimer->attachInterrupt(sampleISR);
-  }
+  // if (master){
+  sampleTimer->attachInterrupt(sampleISR);
+ //}
   sampleTimer->resume();
 
 
@@ -566,5 +623,8 @@ void setup() {
 void loop() {
     // Serial.println(RX_Message[3]);
     // Serial.println(finall.c_str());
+    // Serial.print(master);
+    // Serial.println(knob1Rotation);
 
+    
 }
