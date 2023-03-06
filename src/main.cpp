@@ -42,8 +42,8 @@
 U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
 
 //Check current step size
-volatile uint32_t currentStepSize;
-
+uint32_t currentStepSize[12];
+uint32_t no_key_pressed = 0; 
 //Function to set outputs using key matrix
 void setOutMuxBit(const uint8_t bitIdx, const bool value) {
       digitalWrite(REN_PIN,LOW);
@@ -111,7 +111,7 @@ const uint32_t stepSizes [] = {
 
 const int LUT_SIZE = 1024;
 int32_t LUT[LUT_SIZE];
-
+const int32_t freq[12] = {262, 277, 294, 311, 330, 349, 367, 392, 415, 440, 466, 494};
 void sine_LUT(){
     for (int i = 0; i < LUT_SIZE; i++)
   {
@@ -119,11 +119,43 @@ void sine_LUT(){
   }
 }
 
+// void sampleISR(){
+//   static uint32_t phaseAcc1 = 0;
+//   static uint32_t phaseAcc2 = 0;
+//   static uint32_t phaseAcc3 = 0;
+//   static uint32_t phaseAcc4 = 0;
+//   static uint32_t phaseAcc5 = 0;
+//   static uint32_t phaseAcc6 = 0;
+//   static uint32_t phaseAcc7 = 0;
+//   phaseAcc1 += currentStepSize[0];
+//   phaseAcc2 += currentStepSize[1];
+//   phaseAcc3 += currentStepSize[2];
+//   phaseAcc4 += currentStepSize[3];
+//   phaseAcc5 += currentStepSize[4];
+//   phaseAcc6 += currentStepSize[5];
+//   phaseAcc7 += currentStepSize[6];
+//   uint32_t index1 = phaseAcc1 >> 22; // scale the phase accumulator to fit the lookup table size
+//   uint32_t index2 = phaseAcc2 >> 22;
+//   uint32_t index3 = phaseAcc3 >> 22; 
+//   uint32_t index4 = phaseAcc4 >> 22;
+//   uint32_t index5 = phaseAcc5 >> 22; 
+//   uint32_t index6 = phaseAcc6 >> 22;
+//   uint32_t index7 = phaseAcc7 >> 22;
+//   int32_t sineValue1 = LUT[index1];
+//   int32_t sineValue2 = LUT[index2];
+//   int32_t sineValue3 = LUT[index3];
+//   int32_t sineValue4 = LUT[index4];
+//   int32_t sineValue5 = LUT[index5];
+//   int32_t sineValue6 = LUT[index6];
+//   int32_t sineValue7 = LUT[index7];
+//   analogWrite(OUTR_PIN, (sineValue1 + sineValue2 + sineValue3 + sineValue4 + sineValue5 + sineValue6 + sineValue7) / 2); // add the two sine waves together and divide by 2 to avoid clipping
+// }
+
 void sampleISR() {
   static uint32_t phaseAcc1 = 0;
   static uint32_t phaseAcc2 = 0;
-  phaseAcc1 += currentStepSize;
-  phaseAcc2 += currentStepSize * 2; // change the frequency of the second sine wave
+  phaseAcc1 += currentStepSize[0];
+  phaseAcc2 += currentStepSize[7]; // change the frequency of the second sine wave
   uint32_t index1 = phaseAcc1 >> 22; // scale the phase accumulator to fit the lookup table size
   uint32_t index2 = phaseAcc2 >> 22;
   int32_t sineValue1 = LUT[index1];
@@ -131,13 +163,6 @@ void sampleISR() {
   analogWrite(OUTR_PIN, (sineValue1 + sineValue2) / 2); // add the two sine waves together and divide by 2 to avoid clipping
 }
 
-// void sampleISR() {
-//   static uint32_t phaseAcc = 0;
-//   phaseAcc += currentStepSize;
-//   uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
-//   int32_t sineValue = LUT[index];
-//   analogWrite(OUTR_PIN, sineValue);
-// }
 
 void setup() {
   // put your setup code here, to run once:
@@ -215,22 +240,39 @@ void loop() {
       {"G#4", "A4", "A#4", "B4"}
     };
     
-    uint32_t localCurrentStepSize = 0; // using a local variable for the step size and set to 0 (no output if no keys are pressed)
-
-    for (int row = 0; row < NUM_ROWS; row++) {
-      for (int col = 0; col < 4; col++) {
-        if (keyStrArray[row] == keyValues[row][col]) {
-          localCurrentStepSize = stepSizes[row * 4 + col];
-          Serial.println(keyStrArray[row].c_str());
-          u8g2.drawStr(2, 30, noteNames[row][col].c_str());
-          break; // exit the inner loop once a key has been found
-        }
+    volatile uint32_t localCurrentStepSize[NUM_ROWS * 4] = {0}; // using a local variable for the step size and set to 0 (no output if no keys are pressed)
+    std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2];
+    size_t no_key_pressed = 0;
+    for (int i = 0; i < sizeof(con); i++){
+      if (con[i] == '0'){
+        localCurrentStepSize[i] = stepSizes[i];
+        u8g2.drawStr(2, 30, con.c_str());
+        no_key_pressed++;
       }
     }
+    for (int i = 0; i < 12; i++){
+      currentStepSize[i] = localCurrentStepSize[i];
+    }
 
-    currentStepSize = localCurrentStepSize; // copy the final value to the global variable
+    for (int i = 0; i < 12; i++){
+      Serial.print("Index: ");
+      Serial.print(i);
+      Serial.println(" =");
+      Serial.println(currentStepSize[i]);
+    }
 
-    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+    
+
+    // for (size_t i = 0; i < NUM_ROWS * 4; i++) {
+    //   currentStepSize[i] = localCurrentStepSize[i]; // copy the final value to the global variable
+    //   Serial.print("The index now is: ");
+    //   Serial.print(i);
+    //   Serial.print(" : ");
+    //   Serial.println(currentStepSize[i]);
+    // }
+
+
+        
 
     // Serial.println(keys);
     u8g2.setCursor(2,20);
@@ -239,8 +281,8 @@ void loop() {
     // Serial.print(keyStrArray[1].c_str());
     // Serial.println(keyStrArray[2].c_str());
 
-    std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2];
 
+    // Serial.println(no_key_pressed);
 
     u8g2.drawStr(2,20, con.c_str());
 
