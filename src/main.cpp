@@ -1,3 +1,5 @@
+
+
 #include <Arduino.h>
 #include <U8g2lib.h>
 #include <bitset>
@@ -117,26 +119,12 @@ void sine_LUT(){
   }
 }
 
-// // Calculate the number of partials based on the Nyquist frequency for the given sampling rate
-// const int NUM_PARTIALS = (22000 / 2) / 100;
-
-const int NUM_PARTIALS = 10;
-float partialAmplitudes[NUM_PARTIALS] = {1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125, 0.00390625, 0.001953125};
-
-
 void sampleISR() {
   static uint32_t phaseAcc = 0;
   phaseAcc += currentStepSize;
   uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
-
-  // Generate the additive synthesis waveform
-  int32_t additiveValue = 0;
-  for (int i = 0; i < NUM_PARTIALS; i++) {
-    int partialIndex = i * index % LUT_SIZE; // generate a partial index based on the current phase accumulator index
-    additiveValue += LUT[partialIndex] * partialAmplitudes[i]; // multiply the LUT value by the partial amplitude and add to the additive value
-  }
-
-  analogWrite(OUTR_PIN, additiveValue / NUM_PARTIALS); // output the average value of the additive waveform
+  int32_t sineValue = LUT[index];
+  analogWrite(OUTR_PIN, sineValue);
 }
 
 
@@ -236,6 +224,10 @@ void loop() {
     // Serial.println(keys);
     u8g2.setCursor(2,20);
 
+    // Serial.print(keyStrArray[0].c_str());
+    // Serial.print(keyStrArray[1].c_str());
+    // Serial.println(keyStrArray[2].c_str());
+
     std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2];
 
 
@@ -249,6 +241,7 @@ void loop() {
     //Toggle LED
     digitalToggle(LED_BUILTIN);
     setRow(1);
+    // printFullBin(readCols());
   }
 
 }
