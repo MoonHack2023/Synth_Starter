@@ -53,7 +53,7 @@ std::string keyStrArray[7];
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t RXMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
-volatile int rotationVar = 0;
+volatile int volVar = 0;
 volatile int octaveVar = 0;
 volatile int masVar = 0;
 std::string prevKnob3 = "00";
@@ -75,6 +75,23 @@ volatile bool master = true;
 std::string RX_keyStr = "0000";
 
 // volatile uint32_t localCurrentStepSize;
+
+// class MyClass {
+//     public:
+//         void printGlobalVariable() {
+//             Serial.println(keyStr.c_str());
+//         }
+// };
+
+void clip (int& knobRotation, int max, int min){
+  if (knobRotation > max){
+    knobRotation = max;
+  }
+  else if (knobRotation < min){
+    knobRotation = min;
+  }
+}
+
 
 const std::string keyValues[NUM_ROWS][4] = {
   {"0111", "1011", "1101", "1110"},
@@ -133,115 +150,49 @@ void setRow(uint8_t rowIdx){
 }
 
 // Decode the rightest Knob
-void decodeKnob3(){
-  std::string currentKnob3 = keyStrArray[3].substr(0, 2); 
-  //Serial.println(keyStrArray[3]);
+void decodeKnob(int knobId, std::string currentKnob, int& knobRotation, std::string& prevKnob){
 
-  if (prevKnob3 == "00" && currentKnob3 == "01"){
+  int rotationVar = 0;
+
+  if (prevKnob == "00" && currentKnob == "01"){
     rotationVar = -1;
   }
-  else if (prevKnob3 == "01" && currentKnob3 == "00"){
+  else if (prevKnob == "01" && currentKnob == "00"){
     rotationVar = 1;
   }
-  else if (prevKnob3 == "10" && currentKnob3 == "11"){
+  else if (prevKnob == "10" && currentKnob == "11"){
     rotationVar = 1;
   }
-  else if (prevKnob3 == "11" && currentKnob3 == "10"){
+  else if (prevKnob == "11" && currentKnob == "10"){
     rotationVar = -1;
   }
   else{
     rotationVar = 0;
   }
-  knob3Rotation += rotationVar;
 
-  if (!master){
-    knob3Rotation = 0;
-  }
-  else{
-    if (knob3Rotation > 8){
-      knob3Rotation = 8;
+  knobRotation += rotationVar;
+
+  if (knobId == 3){
+    if (!master){
+      knobRotation = 0;
     }
-    else if (knob3Rotation < 0){
-      knob3Rotation = 0;
+    else{
+      clip(knobRotation, 8, 0);
     }
   }
-
-  prevKnob3 = currentKnob3;
-}
-
-// Decode the rightest Knob
-void decodeKnob2(){
-  std::string currentKnob2 = keyStrArray[3].substr(2, 4); 
-  //Serial.println(keyStrArray[3]);
-
-  if (prevKnob2 == "00" && currentKnob2 == "01"){
-    octaveVar = -1;
-  }
-  else if (prevKnob2 == "01" && currentKnob2 == "00"){
-    octaveVar = 1;
-  }
-  else if (prevKnob2 == "10" && currentKnob2 == "11"){
-    octaveVar = 1;
-  }
-  else if (prevKnob2 == "11" && currentKnob2 == "10"){
-    octaveVar = -1;
+  else if (knobId == 1){
+    clip(knobRotation, 1, 0);
+    // master = bool(knobRotation);
   }
   else{
-    octaveVar = 0;
+    clip(knobRotation, 8, 0);
   }
 
-  knob2Rotation += octaveVar;
+  prevKnob = currentKnob;
 
-  if (knob2Rotation > 8){
-    knob2Rotation = 8;
-  }
-  else if (knob2Rotation < 0){
-    knob2Rotation = 0;
-  }
-  //Serial.println("IN KNOB 2");
-  OCTAVE = knob2Rotation;
-  prevKnob2 = currentKnob2;
+
 }
 
-void decodeKnob1(){
-  std::string currentKnob1 = keyStrArray[4].substr(0, 2); 
-  //Serial.println(keyStrArray[3]);
-
-  if (prevKnob1 == "00" && currentKnob1 == "01"){
-    masVar = -1;
-  }
-  else if (prevKnob1 == "01" && currentKnob1 == "00"){
-    masVar = 1;
-  }
-  else if (prevKnob1 == "10" && currentKnob1 == "11"){
-    masVar = 1;
-  }
-  else if (prevKnob1 == "11" && currentKnob1 == "10"){
-    masVar = -1;
-  }
-  else{
-    masVar = 0;
-  }
-
-  knob1Rotation += masVar;
-
-  if (knob1Rotation > 1){
-    knob1Rotation = 1;
-  }
-  else if (knob1Rotation < 0){
-    knob1Rotation = 0;
-  }
-  Serial.println("IN DECODE");
-  
-  if (knob1Rotation == 1){
-    master = true;
-  }
-  else{
-    master = false;
-  }
-
-  prevKnob1 = currentKnob1;
-}
 
 const uint32_t stepSizes [] = {
 
@@ -430,9 +381,17 @@ void scanKeysTask(void * pvParameters){
     xQueueSend( msgOutQ, TX_Message, portMAX_DELAY);
   }
 
-  decodeKnob3();
-  decodeKnob2();
-  decodeKnob1();
+  // knob3ptr -> decode();
+  // knob2ptr -> decode();
+  // knob1ptr -> decode();
+  
+  decodeKnob(3, keyStrArray[3].substr(0, 2), knob3Rotation, prevKnob3);
+  volVar = knob3Rotation;
+  decodeKnob(2, keyStrArray[3].substr(2, 4), knob2Rotation, prevKnob2);
+  OCTAVE = knob2Rotation;
+  decodeKnob(1, keyStrArray[4].substr(0, 2), knob1Rotation, prevKnob1);
+  master = bool(knob1Rotation);
+
   
     
     // std::string currentKnob3 = keyStrArray[3].substr(0, 2); 
@@ -625,6 +584,7 @@ void loop() {
     // Serial.println(finall.c_str());
     // Serial.print(master);
     // Serial.println(knob1Rotation);
-
+    //classptr->printGlobalVariable();
+    // knob3ptr-> print();
     
 }
