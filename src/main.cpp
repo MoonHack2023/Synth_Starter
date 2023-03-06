@@ -208,7 +208,7 @@ void loop() {
       for (int col = 0; col < 4; col++) {
         if (keyStrArray[row] == keyValues[row][col]) {
           localCurrentStepSize = stepSizes[row * 4 + col];
-          Serial.println(localCurrentStepSize);
+          Serial.println(keyStrArray[row].c_str());
           u8g2.drawStr(2, 30, noteNames[row][col].c_str());
           break; // exit the inner loop once a key has been found
         }
@@ -219,11 +219,6 @@ void loop() {
 
     __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
 
-    if(keyArray[0] == 7) {
-      currentStepSize =  stepSizes[0];
-      Serial.println(currentStepSize);
-    }
-    
     // Serial.println(keys);
     u8g2.setCursor(2,20);
 
