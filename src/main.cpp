@@ -236,7 +236,8 @@ void sampleISR() {
   phaseAcc += currentStepSize;
   uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size (2024 = 2^10)
   int32_t sineValue = LUT[index];
-  sineValue = sineValue >> (8 - knob3Rotation);
+  // Serial.println()
+  sineValue = sineValue >> (8 - volVar);
   analogWrite(OUTR_PIN, sineValue);
 }
 
@@ -278,11 +279,12 @@ uint32_t countZero(std::string keyStr){
 
 // Everything that's relevant to scanning the Keys
 void scanKeysTask(void * pvParameters){
-  decodeKnob1();
+
   Serial.println("SCAN");
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint8_t TX_Message[8] = {0};
+  uint8_t prevTX_Message;
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency);
     // const int NUM_ROWS = 3; // define a constant for the number of rows
@@ -299,7 +301,16 @@ void scanKeysTask(void * pvParameters){
       keyArray[row] = keys;
     }
     keyStr = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2] + keyStrArray[3]; // + keyStrArray[4] + keyStrArray[5] + keyStrArray[6];
-    
+    // decodeKnob(1, keyStrArray[4].substr(0, 2), knob1Rotation, prevKnob1);
+    // master = bool(knob1Rotation);
+    if (keyStrArray[5][3] == '1' ){ // left most or solo
+      master = true;
+      // Serial.println("MASTER");
+    }
+    else{
+      master = false;
+      // Serial.println("Slave");
+    }
     // int zeroCount = 0;
     // uint32_t sum = 0;
     // for (int i = 0; i < 12; i++){
@@ -341,27 +352,38 @@ void scanKeysTask(void * pvParameters){
     TX_Message[4] = hi_val;
   }
   
+  uint32_t sumSlave = 0;
   if (master){
-    // Serial.println("MASTER");
-    xSemaphoreTake(RXMutex, portMAX_DELAY);
-    // for (int i = 0; i < 4; i++){
-      // detect press messages
-    if (RX_Message[0] == 80){
-      // Serial.println("Pressed");
-      localCurrentStepSizeR = stepSizes[RX_Message[2]];
-      localCurrentStepSizeR = localCurrentStepSizeR << (RX_Message[1] - 4);
+    if (keyStrArray[6][3] == '0' || keyStrArray[5][3] == '0'){
+      // Serial.println("MASTER");
+      xSemaphoreTake(RXMutex, portMAX_DELAY);
+      // for (int i = 0; i < 4; i++){
+        // detect press messages
+      if (RX_Message[0] == 80){
+        // Serial.println("Pressed");
+        localCurrentStepSizeR = stepSizes[RX_Message[2]];
+        localCurrentStepSizeR = localCurrentStepSizeR << (RX_Message[1] - 4);
+      }
+      // }
+      std::bitset<6> binaryHigh(RX_Message[3]);
+      std::string binaryHighStr = binaryHigh.to_string();
+      std::bitset<6> binaryLow(RX_Message[4]);
+      std::string binaryLowStr = binaryLow.to_string();
+      RX_keyStr = binaryHighStr + binaryLowStr;
+      
+      xSemaphoreGive(RXMutex);
+      
+      
+      if (keyStrArray[6][3] == '0'){
+        sumSlave = chords(RX_keyStr,OCTAVE+1);
+      }
+      else{
+        sumSlave = chords(RX_keyStr,OCTAVE-1);
+      }
     }
-    // }
-    std::bitset<6> binaryHigh(RX_Message[3]);
-    std::string binaryHighStr = binaryHigh.to_string();
-    std::bitset<6> binaryLow(RX_Message[4]);
-    std::string binaryLowStr = binaryLow.to_string();
-    RX_keyStr = binaryHighStr + binaryLowStr;
     
-    xSemaphoreGive(RXMutex);
-    
+
     uint32_t sumMaster = chords(keyStr,OCTAVE);
-    uint32_t sumSlave = chords(RX_keyStr,RX_Message[1]);
 
     if (localCurrentStepSize != 0) {
       localCurrentStepSize = (sumSlave +  sumMaster) / (countZero(RX_keyStr) + countZero(keyStr));
@@ -377,8 +399,9 @@ void scanKeysTask(void * pvParameters){
 
   std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
   
-  if (!master){
+  if (!master && TX_Message[0] == 80){
     xQueueSend( msgOutQ, TX_Message, portMAX_DELAY);
+    TX_Message[0] = 82;
   }
 
   // knob3ptr -> decode();
@@ -389,8 +412,7 @@ void scanKeysTask(void * pvParameters){
   volVar = knob3Rotation;
   decodeKnob(2, keyStrArray[3].substr(2, 4), knob2Rotation, prevKnob2);
   OCTAVE = knob2Rotation;
-  decodeKnob(1, keyStrArray[4].substr(0, 2), knob1Rotation, prevKnob1);
-  master = bool(knob1Rotation);
+  
 
   
     
@@ -425,7 +447,7 @@ void displayUpdateTask(void *  pvParameters){
     // u8g2.print(RX_Message[2]);
     // xSemaphoreGive(RXMutex);
      // u8g2.setCursor(2,40);
-    std::string vol = "Vol: " + std::to_string(knob3Rotation);
+    std::string vol = "Vol: " + std::to_string(volVar);
     u8g2.drawStr(40,30, vol.c_str());
     std::string octave = "Oct: " + std::to_string(OCTAVE);
     u8g2.drawStr(2,30, octave.c_str());
@@ -586,5 +608,8 @@ void loop() {
     // Serial.println(knob1Rotation);
     //classptr->printGlobalVariable();
     // knob3ptr-> print();
-    
+    Serial.print("WEST: ");
+    Serial.println(keyStrArray[5].c_str());
+    Serial.print("EAST: ");
+    Serial.println(keyStrArray[6].c_str());
 }
