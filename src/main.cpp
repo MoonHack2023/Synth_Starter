@@ -128,7 +128,7 @@ void sampleISR() {
     for (int i = 0; i < 12; i++){
       if (tempkeyVal[i] == '0'){
         currentStepCounter = 1;
-        uint32_t index = ((((stepSizes[i+1] << 1))*phaseAcc) >> 22)%360;
+        uint32_t index = ((((stepSizes[i] >> 0))*phaseAcc) >> 22)%360;
         if (index >=180){
           Vfinal += -LUT[(index-180)>>1];
         }
