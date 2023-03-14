@@ -119,29 +119,27 @@ std::string Key_string;
 void sampleISR() {
     static uint32_t phaseAcc = 0;
     uint32_t Vout;
-    uint32_t zeroCount = 0;
-    uint32_t Vfinal = 0;
-    std::string tempkeyVal = Key_string;
-    int currentStepCounter = 1 ; // define and initialize currentStepCounter to a value of 10
-    int testvar = 0; // define and initialize testvar to zero
+    uint32_t Vfinal_zeroCount = 0; // combined variable
+    const char* tempkeyVal = Key_string.c_str(); // avoid using std::string
+    uint32_t currentStepCounter = 1; // use unsigned integer
+    uint32_t testvar = 0; // use unsigned integer
 
     for (int i = 0; i < 12; i++){
       if (tempkeyVal[i] == '0'){
         currentStepCounter = 1;
         uint32_t index = ((((stepSizes[i] >> 0))*phaseAcc) >> 22)%360;
         if (index >=180){
-          Vfinal += -LUT[(index-180)>>1];
+          Vfinal_zeroCount += -LUT[(index-180)>>1];
         }
         else{
-          Vfinal += LUT[(index) >> 1];
+          Vfinal_zeroCount += LUT[(index) >> 1];
         }
-        zeroCount += 1;
+        testvar += 1;
       }
     }
-    Vfinal = Vfinal >> 28;
-    phaseAcc += currentStepCounter;
-    testvar = zeroCount;
 
+    uint32_t Vfinal = Vfinal_zeroCount >> 28; // calculate final Vfinal
+    phaseAcc += currentStepCounter;
     analogWrite(OUTR_PIN, Vfinal);
 }
 
