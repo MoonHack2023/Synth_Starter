@@ -103,7 +103,7 @@ const uint32_t stepSizes [] = {
 
 const int32_t freq[12] = {262, 277, 294, 311, 330, 349, 367, 392, 415, 440, 466, 494};
 
-const int LUT_SIZE = 256;
+const int LUT_SIZE = 128;
 int32_t LUT[LUT_SIZE];
 int8_t key_index; 
 void sine_LUT(){
@@ -113,10 +113,36 @@ void sine_LUT(){
   }
 }
 
-uint32_t V_final;
+uint32_t V_final_Glob;
+std::string Key_string;
 
 void sampleISR() {
-    analogWrite(OUTR_PIN, V_final);
+    static uint32_t phaseAcc = 0;
+    uint32_t Vout;
+    uint32_t zeroCount = 0;
+    uint32_t Vfinal = 0;
+    std::string tempkeyVal = Key_string;
+    int currentStepCounter = 1 ; // define and initialize currentStepCounter to a value of 10
+    int testvar = 0; // define and initialize testvar to zero
+
+    for (int i = 0; i < 12; i++){
+      if (tempkeyVal[i] == '0'){
+        currentStepCounter = 1;
+        uint32_t index = ((((stepSizes[i+1] << 1))*phaseAcc) >> 22)%360;
+        if (index >=180){
+          Vfinal += -LUT[(index-180)>>1];
+        }
+        else{
+          Vfinal += LUT[(index) >> 1];
+        }
+        zeroCount += 1;
+      }
+    }
+    Vfinal = Vfinal >> 28;
+    phaseAcc += currentStepCounter;
+    testvar = zeroCount;
+
+    analogWrite(OUTR_PIN, Vfinal);
 }
 
 
@@ -163,10 +189,9 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   static uint32_t next = millis();
-  static uint32_t count = 0;
   uint8_t keyArray[7];
   std::string keyStrArray[7];
-  uint32_t Vout = 0; 
+
   if (millis() > next) {
     next += interval;
 
@@ -186,50 +211,11 @@ void loop() {
         keyArray[row] = keys;
     }
 
-    const std::string keyValues[NUM_ROWS][4] = {
-      {"0111", "1011", "1101", "1110"},
-      {"0111", "1011", "1101", "1110"},
-      {"0111", "1011", "1101", "1110"}
-    };
-    const std::string noteNames[NUM_ROWS][4] = {
-      {"C4", "C#4", "D4", "D#4"},
-      {"E4", "F4", "F#4", "G4"},
-      {"G#4", "A4", "A#4", "B4"}
-    };
-    
-    uint32_t localCurrentStepSize = 0; // using a local variable for the step size and set to 0 (no output if no keys are pressed)
     std::string con = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2];
-    static uint32_t phaseAcc = 0;
 
-    for (int i = 0; i < 12; i++){
-
-    if (con[i] == '0') {
-        Vout += LUT[(int)((float)LUT_SIZE * freq[i] * ((float)phaseAcc / 22000.0)) % LUT_SIZE];
-        localCurrentStepSize += stepSizes[i];
-      }
-    }
-    // analogWrite(OUTR_PIN, 255 * sin(2 * PI * 466 * 0.01) + 255);
-    phaseAcc += localCurrentStepSize;
-    V_final = Vout;
-    Serial.println(Vout);
+    Key_string = con;
 
 
-      // currentStepSize = localCurrentStepSize; // copy the final value to the global variable 
-      // __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
-      // phaseAcc += localCurrentStepSize;
-
-
-    // for (int row = 0; row < NUM_ROWS; row++) {
-    //   for (int col = 0; col < 4; col++) {
-    //     if (keyStrArray[row] == keyValues[row][col]) {
-    //       localCurrentStepSize = stepSizes[row * 4 + col];
-    //       Serial.println(keyStrArray[row].c_str());
-    //       u8g2.drawStr(2, 30, noteNames[row][col].c_str());
-    //       break; // exit the inner loop once a key has been found
-    //     }
-    //   }
-    // }
-    
 
 
     // Serial.println(keys);
