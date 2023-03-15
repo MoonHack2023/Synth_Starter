@@ -210,7 +210,7 @@ const uint32_t stepSizes [] = {
       96426316, //B4
 };
 
-const int LUT_SIZE = 1024;
+const int LUT_SIZE = 128;
 int32_t LUT[LUT_SIZE];
 
 void sine_LUT() {
@@ -231,16 +231,50 @@ void sine_LUT() {
 // }
 
 //Sine wave
-void sampleISR() {
-  static uint32_t phaseAcc = 0;
-  phaseAcc += currentStepSize;
-  uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size (2024 = 2^10)
-  int32_t sineValue = LUT[index];
-  // Serial.println()
-  sineValue = sineValue >> (8 - volVar);
-  analogWrite(OUTR_PIN, sineValue);
-}
+// void sampleISR() {
+//   static uint32_t phaseAcc = 0;
+//   phaseAcc += currentStepSize;
+//   uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size (2024 = 2^10)
+//   int32_t sineValue = LUT[index];
+//   // Serial.println()
+//   sineValue = sineValue >> (8 - volVar);
+//   analogWrite(OUTR_PIN, sineValue);
+// }
+// std::string Key_string;
 
+uint32_t V_global; 
+
+void sampleISR() {
+    static uint32_t phaseAcc = 0;
+    uint32_t Vout;
+    const char* tempkeyVal = keyStr.c_str(); // avoid using std::string
+    uint32_t currentStepCounter = 1; // use unsigned integer
+    uint32_t Vfinal_zeroCount = 0; // combined variable
+    uint32_t index = 0;
+    
+    for (int i = 0; i < 12; i++){
+      if (tempkeyVal[i] == '0'){
+        currentStepCounter = 1;
+        if (OCTAVE <4){
+          index = ((((stepSizes[i] >> -(OCTAVE-4)))*phaseAcc) >> 22)% 360;
+        }
+        else {
+          index = ((((stepSizes[i] << (OCTAVE-4)))*phaseAcc) >> 22)% 360;
+        }
+        if (index >=180){
+          Vfinal_zeroCount += -LUT[(index-180)>>1];
+        }
+        else{
+          Vfinal_zeroCount += LUT[(index) >> 1];
+        }
+      }
+    }
+  
+    uint32_t Vfinal = Vfinal_zeroCount >> (34-volVar); // calculate final Vfinal
+    V_global = Vfinal; 
+    phaseAcc += currentStepCounter;
+    analogWrite(OUTR_PIN, Vfinal);
+}
 
 // Create chords by summing the currentstepsize of each key 
 uint32_t chords(std::string keyStr, int OCTAVE){
@@ -391,7 +425,21 @@ void scanKeysTask(void * pvParameters){
     else{
       localCurrentStepSize = (sumSlave +  sumMaster);
     }
+    // const char* tempkeyVal = Key_string.c_str(); // avoid using std::string
+    // uint32_t currentStepCounter = 1; // use unsigned integer
 
+    // for (int i = 0; i < 12; i++){
+    //   if (tempkeyVal[i] == '0'){
+    //     currentStepCounter = 1;
+    //     uint32_t index = ((((stepSizes[i] >> 0))*phaseAcc) >> 22)%360;
+    //     if (index >=180){
+    //       Vfinal_zeroCount += -LUT[(index-180)>>1];
+    //     }
+    //     else{
+    //       Vfinal_zeroCount += LUT[(index) >> 1];
+    //     }
+    //   }
+    // }
     
     __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
@@ -593,10 +641,6 @@ void setup() {
     NULL,			/* Parameter passed into the task */
     1,			/* Task priority */
     &CAN_TXHandle );  /* Pointer to store the task handle */
-
-  
-
-
   
   vTaskStartScheduler();
 }
@@ -608,8 +652,10 @@ void loop() {
     // Serial.println(knob1Rotation);
     //classptr->printGlobalVariable();
     // knob3ptr-> print();
-    Serial.print("WEST: ");
-    Serial.println(keyStrArray[5].c_str());
-    Serial.print("EAST: ");
-    Serial.println(keyStrArray[6].c_str());
+    // Serial.print("WEST: ");
+    // Serial.println(keyStrArray[5].c_str());
+    // Serial.print("EAST: ");
+    // Serial.println(keyStrArray[6].c_str());
+    // Serial.println(V_global);
+    
 }
