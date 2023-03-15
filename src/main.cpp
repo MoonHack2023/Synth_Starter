@@ -70,9 +70,9 @@ QueueHandle_t msgOutQ;
 std::string prevKeyArray[7] = {"1111", "1111", "1111", "1111", "1111", "1111", "1111"};
 int OCTAVE = 4;
 uint8_t GLOBAL_RX_Message[8]={0};
-std::string keyStr = "0000";
+std::string keyStr = "111111111111";
 volatile bool master = true;
-std::string RX_keyStr = "0000";
+std::string RX_keyStr = "111111111111";
 
 // volatile uint32_t localCurrentStepSize;
 
@@ -251,15 +251,20 @@ void sampleISR() {
     uint32_t currentStepCounter = 1; // use unsigned integer
     uint32_t Vfinal_zeroCount = 0; // combined variable
     uint32_t index = 0;
-    
-    for (int i = 0; i < 12; i++){
+    int localOct = OCTAVE;
+
+    for (int i = 0; i < 24; i++){
+      if (i==12){
+          localOct +=1;
+      }
       if (tempkeyVal[i] == '0'){
         currentStepCounter = 1;
-        if (OCTAVE <4){
-          index = ((((stepSizes[i] >> -(OCTAVE-4)))*phaseAcc) >> 22)% 360;
+        
+        if (localOct <4){
+          index = ((((stepSizes[i] >> -(localOct-4)))*phaseAcc) >> 22)% 360;
         }
         else {
-          index = ((((stepSizes[i] << (OCTAVE-4)))*phaseAcc) >> 22)% 360;
+          index = ((((stepSizes[i] << (localOct-4)))*phaseAcc) >> 22)% 360;
         }
         if (index >=180){
           Vfinal_zeroCount += -LUT[(index-180)>>1];
@@ -276,8 +281,7 @@ void sampleISR() {
     analogWrite(OUTR_PIN, Vfinal);
 }
 
-// Create chords by summing the currentstepsize of each key 
-uint32_t chords(std::string keyStr, int OCTAVE){
+uint32_t chords(std::string keyStr){
   int zeroCount = 0;
   uint32_t sum = 0;
   uint32_t localCurrentStepSize = 0;
@@ -285,13 +289,6 @@ uint32_t chords(std::string keyStr, int OCTAVE){
     if (keyStr[i] == '0'){
       zeroCount++;
       localCurrentStepSize = stepSizes[i];
-      if (OCTAVE < 4){
-        localCurrentStepSize = localCurrentStepSize >> -(OCTAVE - 4);
-      }
-      else{
-        localCurrentStepSize = localCurrentStepSize << (OCTAVE - 4);
-      }
-      
       sum += localCurrentStepSize;
     }
   }
@@ -334,7 +331,7 @@ void scanKeysTask(void * pvParameters){
       keyStrArray[row] = keyString;
       keyArray[row] = keys;
     }
-    keyStr = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2] + keyStrArray[3]; // + keyStrArray[4] + keyStrArray[5] + keyStrArray[6];
+    keyStr = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2]; //+ keyStrArray[3] + keyStrArray[4] + keyStrArray[5] + keyStrArray[6];
     // decodeKnob(1, keyStrArray[4].substr(0, 2), knob1Rotation, prevKnob1);
     // master = bool(knob1Rotation);
     if (keyStrArray[5][3] == '1' ){ // left most or solo
@@ -407,24 +404,28 @@ void scanKeysTask(void * pvParameters){
       
       xSemaphoreGive(RXMutex);
       
-      
+      // keyStr.pop_back();
+      // keyStr.pop_back();
+      // keyStr.pop_back();
+      // keyStr = keyStr.substr(0,12);  
+    
       if (keyStrArray[6][3] == '0'){
-        sumSlave = chords(RX_keyStr,OCTAVE+1);
+        keyStr = keyStr + RX_keyStr;
       }
       else{
-        sumSlave = chords(RX_keyStr,OCTAVE-1);
+        keyStr = RX_keyStr + keyStr;
       }
     }
     
 
-    uint32_t sumMaster = chords(keyStr,OCTAVE);
+    //uint32_t sumMaster = chords(keyStr,OCTAVE);
 
-    if (localCurrentStepSize != 0) {
-      localCurrentStepSize = (sumSlave +  sumMaster) / (countZero(RX_keyStr) + countZero(keyStr));
-    }
-    else{
-      localCurrentStepSize = (sumSlave +  sumMaster);
-    }
+    // if (localCurrentStepSize != 0) {
+    //   localCurrentStepSize = (sumSlave +  sumMaster) / (countZero(RX_keyStr) + countZero(keyStr));
+    // }
+    // else{
+    //   localCurrentStepSize = (sumSlave +  sumMaster);
+    // }
     // const char* tempkeyVal = Key_string.c_str(); // avoid using std::string
     // uint32_t currentStepCounter = 1; // use unsigned integer
 
@@ -441,7 +442,7 @@ void scanKeysTask(void * pvParameters){
     //   }
     // }
     
-    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+    // __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
 
 
@@ -657,5 +658,6 @@ void loop() {
     // Serial.print("EAST: ");
     // Serial.println(keyStrArray[6].c_str());
     // Serial.println(V_global);
+    Serial.println(keyStr.c_str());
     
 }
