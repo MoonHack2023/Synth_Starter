@@ -122,7 +122,6 @@ void sampleISR() {
     uint32_t Vfinal_zeroCount = 0; // combined variable
     const char* tempkeyVal = Key_string.c_str(); // avoid using std::string
     uint32_t currentStepCounter = 1; // use unsigned integer
-    uint32_t testvar = 0; // use unsigned integer
 
     for (int i = 0; i < 12; i++){
       if (tempkeyVal[i] == '0'){
@@ -134,10 +133,8 @@ void sampleISR() {
         else{
           Vfinal_zeroCount += LUT[(index) >> 1];
         }
-        testvar += 1;
       }
     }
-
     uint32_t Vfinal = Vfinal_zeroCount >> 28; // calculate final Vfinal
     phaseAcc += currentStepCounter;
     analogWrite(OUTR_PIN, Vfinal);
