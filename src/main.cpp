@@ -74,15 +74,6 @@ std::string keyStr = "111111111111";
 volatile bool master = true;
 std::string RX_keyStr = "111111111111";
 
-// volatile uint32_t localCurrentStepSize;
-
-// class MyClass {
-//     public:
-//         void printGlobalVariable() {
-//             Serial.println(keyStr.c_str());
-//         }
-// };
-
 void clip (int& knobRotation, int max, int min){
   if (knobRotation > max){
     knobRotation = max;
@@ -91,7 +82,6 @@ void clip (int& knobRotation, int max, int min){
     knobRotation = min;
   }
 }
-
 
 const std::string keyValues[NUM_ROWS][4] = {
   {"0111", "1011", "1101", "1110"},
@@ -103,7 +93,6 @@ const std::string noteNames[NUM_ROWS][4] = {
   {"E4", "F4", "F#4", "G4"},
   {"G#4", "A4", "A#4", "B4"}
 };
-
 
 //Function to set outputs using key matrix
 void setOutMuxBit(const uint8_t bitIdx, const bool value) {
@@ -190,7 +179,6 @@ void decodeKnob(int knobId, std::string currentKnob, int& knobRotation, std::str
 
   prevKnob = currentKnob;
 
-
 }
 
 
@@ -221,65 +209,62 @@ void sine_LUT() {
   }
 }
 
-// // Sawtooth wave
-// void sampleISR() {
-//   static uint32_t phaseAcc = 0;
-//   phaseAcc += currentStepSize;
-//   int32_t Vout = (phaseAcc >> 24) - 128;
-//   Vout = Vout >> (8 - knob3Rotation);
-//   analogWrite(OUTR_PIN, (Vout + 128));
-// }
-
-//Sine wave
-// void sampleISR() {
-//   static uint32_t phaseAcc = 0;
-//   phaseAcc += currentStepSize;
-//   uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size (2024 = 2^10)
-//   int32_t sineValue = LUT[index];
-//   // Serial.println()
-//   sineValue = sineValue >> (8 - volVar);
-//   analogWrite(OUTR_PIN, sineValue);
-// }
-// std::string Key_string;
-
 uint32_t V_global; 
 
+// Sawtooth wave
 void sampleISR() {
-    static uint32_t phaseAcc = 0;
-    uint32_t Vout;
-    const char* tempkeyVal = keyStr.c_str(); // avoid using std::string
-    uint32_t currentStepCounter = 1; // use unsigned integer
-    uint32_t Vfinal_zeroCount = 0; // combined variable
-    uint32_t index = 0;
-    int localOct = OCTAVE;
-
-    for (int i = 0; i < 24; i++){
-      if (i==12){
-          localOct +=1;
-      }
-      if (tempkeyVal[i] == '0'){
-        currentStepCounter = 1;
-        
-        if (localOct <4){
-          index = ((((stepSizes[i] >> -(localOct-4)))*phaseAcc) >> 22)% 360;
-        }
-        else {
-          index = ((((stepSizes[i] << (localOct-4)))*phaseAcc) >> 22)% 360;
-        }
-        if (index >=180){
-          Vfinal_zeroCount += -LUT[(index-180)>>1];
-        }
-        else{
-          Vfinal_zeroCount += LUT[(index) >> 1];
-        }
-      }
+  V_global = 0;
+  static uint32_t phaseAcc = 0;
+  uint32_t Vout;
+  const char* tempkeyVal = keyStr.c_str();
+  for (int i = 0; i<12; i++){
+    if (tempkeyVal[i] == '0'){
+      phaseAcc += currentStepSize;
+      Vout = (phaseAcc >> 24) - 128;
     }
+  }
+  Vout = Vout >> (8-knob3Rotation);
+  V_global = phaseAcc;
+  analogWrite(OUTR_PIN, (Vout + 128));
+  }
+
+// void sampleISR() {
+//     static uint32_t phaseAcc = 0;
+//     uint32_t Vout;
+//     const char* tempkeyVal = keyStr.c_str(); // avoid using std::string
+//     uint32_t currentStepCounter = 1; // use unsigned integer
+//     uint32_t Vfinal_zeroCount = 0; // combined variable
+//     uint32_t index = 0;
+//     int localOct = OCTAVE;
+
+//     for (int i = 0; i < 24; i++){
+//       if (i==12){
+//           localOct +=1;
+//       }
+//       if (tempkeyVal[i] == '0'){
+//         currentStepCounter = 1;
+        
+//         if (localOct <4){
+//           index = ((((stepSizes[i] >> -(localOct-4)))*phaseAcc) >> 22)% 360;
+//         }
+//         else {
+//           index = ((((stepSizes[i] << (localOct-4)))*phaseAcc) >> 22)% 360;
+//         }
+//         if (index >=180){
+//           Vfinal_zeroCount += -LUT[(index-180)>>1];
+//         }
+//         else{
+//           Vfinal_zeroCount += LUT[(index) >> 1];
+//         }
+//       }
+//     }
   
-    uint32_t Vfinal = Vfinal_zeroCount >> (34-volVar); // calculate final Vfinal
-    V_global = Vfinal; 
-    phaseAcc += currentStepCounter;
-    analogWrite(OUTR_PIN, Vfinal);
-}
+//     uint32_t Vfinal = Vfinal_zeroCount >> (34-volVar); // calculate final Vfinal
+//     V_global = Vfinal; 
+//     phaseAcc += currentStepCounter;
+//     analogWrite(OUTR_PIN, Vfinal);
+// }
+
 
 uint32_t chords(std::string keyStr){
   int zeroCount = 0;
@@ -295,7 +280,7 @@ uint32_t chords(std::string keyStr){
   // if (zeroCount != 0){
   //   sum /= zeroCount;
   // }
-  return sum;
+  return localCurrentStepSize;
 }
 
 uint32_t countZero(std::string keyStr){
@@ -342,23 +327,6 @@ void scanKeysTask(void * pvParameters){
       master = false;
       // Serial.println("Slave");
     }
-    // int zeroCount = 0;
-    // uint32_t sum = 0;
-    // for (int i = 0; i < 12; i++){
-    //   if (keyStr[i] == '0'){
-    //     zeroCount++;
-    //     localCurrentStepSizeT = stepSizes[i];
-    //     localCurrentStepSizeT = localCurrentStepSizeT << (OCTAVE - 4);
-    //     sum += localCurrentStepSizeT;
-    //   }
-    // }
-    // if (zeroCount != 0){
-    //   sum /= zeroCount;
-    // }
-    
-    // currentStepSize = localCurrentStepSizeT;
-  // this was checkeypress
-  // uint8_t TX_Message[8];
 
   if (!master){
     TX_Message[1] = OCTAVE ;
@@ -403,11 +371,7 @@ void scanKeysTask(void * pvParameters){
       RX_keyStr = binaryHighStr + binaryLowStr;
       
       xSemaphoreGive(RXMutex);
-      
-      // keyStr.pop_back();
-      // keyStr.pop_back();
-      // keyStr.pop_back();
-      // keyStr = keyStr.substr(0,12);  
+    
     
       if (keyStrArray[6][3] == '0'){
         keyStr = keyStr + RX_keyStr;
@@ -418,31 +382,16 @@ void scanKeysTask(void * pvParameters){
     }
     
 
-    //uint32_t sumMaster = chords(keyStr,OCTAVE);
+    uint32_t sumMaster = chords(keyStr);
 
-    // if (localCurrentStepSize != 0) {
-    //   localCurrentStepSize = (sumSlave +  sumMaster) / (countZero(RX_keyStr) + countZero(keyStr));
-    // }
-    // else{
-    //   localCurrentStepSize = (sumSlave +  sumMaster);
-    // }
-    // const char* tempkeyVal = Key_string.c_str(); // avoid using std::string
-    // uint32_t currentStepCounter = 1; // use unsigned integer
-
-    // for (int i = 0; i < 12; i++){
-    //   if (tempkeyVal[i] == '0'){
-    //     currentStepCounter = 1;
-    //     uint32_t index = ((((stepSizes[i] >> 0))*phaseAcc) >> 22)%360;
-    //     if (index >=180){
-    //       Vfinal_zeroCount += -LUT[(index-180)>>1];
-    //     }
-    //     else{
-    //       Vfinal_zeroCount += LUT[(index) >> 1];
-    //     }
-    //   }
-    // }
+    if (localCurrentStepSize != 0) {
+      localCurrentStepSize = (sumSlave +  sumMaster) / (countZero(RX_keyStr) + countZero(keyStr));
+    }
+    else{
+      localCurrentStepSize = (sumSlave +  sumMaster);
+    }
     
-    // __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
 
 
@@ -452,10 +401,6 @@ void scanKeysTask(void * pvParameters){
     xQueueSend( msgOutQ, TX_Message, portMAX_DELAY);
     TX_Message[0] = 82;
   }
-
-  // knob3ptr -> decode();
-  // knob2ptr -> decode();
-  // knob1ptr -> decode();
   
   decodeKnob(3, keyStrArray[3].substr(0, 2), knob3Rotation, prevKnob3);
   volVar = knob3Rotation;
@@ -484,18 +429,10 @@ void displayUpdateTask(void *  pvParameters){
     vTaskDelayUntil( &xLastWakeTime, xFrequency);
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-    // u8g2.drawStr(2,10,"Hello World!"); // write something to the internal memory
     
     u8g2.drawStr(2,10, keyStr.c_str());
     u8g2.drawStr(2,20, RX_keyStr.c_str());
     
-    // u8g2.setCursor(2,20);
-    // xSemaphoreTake(RXMutex, portMAX_DELAY);
-    // u8g2.print((char) RX_Message[0]);
-    // u8g2.print(RX_Message[1]);
-    // u8g2.print(RX_Message[2]);
-    // xSemaphoreGive(RXMutex);
-     // u8g2.setCursor(2,40);
     std::string vol = "Vol: " + std::to_string(volVar);
     u8g2.drawStr(40,30, vol.c_str());
     std::string octave = "Oct: " + std::to_string(OCTAVE);
@@ -512,17 +449,11 @@ void decodeTask(void *  pvParameters){
   uint32_t ID = 0x123;
   uint32_t localCurrentStepSize;
   uint8_t Local_RX_Message[8];
-  // Serial.println("DECODE");
   while (1){
     xSemaphoreTake(RXMutex, portMAX_DELAY);
     xQueueReceive(msgInQ, Local_RX_Message, portMAX_DELAY);
-    // Serial.print("Local:");
-    // Serial.println(Local_RX_Message[1]);
     memcpy(RX_Message, Local_RX_Message, sizeof(RX_Message));
-    // mem(RX_Message, RX_Message + sizeof(RX_Message)/sizeof(RX_Message), Local_RX_Message);
     xSemaphoreGive(RXMutex);
-    // Serial.print("Global: ");
-    // Serial.println(RX_Message[1]);
   
   }  
 }
@@ -548,9 +479,6 @@ void CAN_TX_ISR (void) {
 	xSemaphoreGiveFromISR(CAN_TX_Semaphore, NULL);
 }
 
-// void change_setup_Task (void * pvParameters){
-//   keyStrArray
-// }
 
 void setup() {
   // put your setup code here, to run once:
@@ -647,17 +575,5 @@ void setup() {
 }
 
 void loop() {
-    // Serial.println(RX_Message[3]);
-    // Serial.println(finall.c_str());
-    // Serial.print(master);
-    // Serial.println(knob1Rotation);
-    //classptr->printGlobalVariable();
-    // knob3ptr-> print();
-    // Serial.print("WEST: ");
-    // Serial.println(keyStrArray[5].c_str());
-    // Serial.print("EAST: ");
-    // Serial.println(keyStrArray[6].c_str());
-    // Serial.println(V_global);
-    Serial.println(keyStr.c_str());
-    
+  Serial.println(V_global);
 }
