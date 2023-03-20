@@ -221,65 +221,69 @@ void sine_LUT() {
   }
 }
 
-// // Sawtooth wave
-// void sampleISR() {
-//   static uint32_t phaseAcc = 0;
-//   phaseAcc += currentStepSize;
-//   int32_t Vout = (phaseAcc >> 24) - 128;
-//   Vout = Vout >> (8 - knob3Rotation);
-//   analogWrite(OUTR_PIN, (Vout + 128));
-// }
-
-//Sine wave
-// void sampleISR() {
-//   static uint32_t phaseAcc = 0;
-//   phaseAcc += currentStepSize;
-//   uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size (2024 = 2^10)
-//   int32_t sineValue = LUT[index];
-//   // Serial.println()
-//   sineValue = sineValue >> (8 - volVar);
-//   analogWrite(OUTR_PIN, sineValue);
-// }
-// std::string Key_string;
-
 uint32_t V_global; 
 
+// Sawtooth wave
 void sampleISR() {
-    static uint32_t phaseAcc = 0;
-    uint32_t Vout;
-    const char* tempkeyVal = keyStr.c_str(); // avoid using std::string
-    uint32_t currentStepCounter = 1; // use unsigned integer
-    uint32_t Vfinal_zeroCount = 0; // combined variable
-    uint32_t index = 0;
-    int localOct = OCTAVE;
+  V_global = 0;
+  static uint32_t phaseAcc = 0;
+  uint32_t Vout;
+  const char* tempkeyVal = keyStr.c_str();
+  int localOct = OCTAVE;
 
-    for (int i = 0; i < 24; i++){
-      if (i==12){
-          localOct +=1;
+  for (int i = 0; i<12; i++){
+    if (tempkeyVal[i] == '0'){
+      if (localOct < 4){
+        phaseAcc += currentStepSize >> (4-localOct);
       }
-      if (tempkeyVal[i] == '0'){
-        currentStepCounter = 1;
-        
-        if (localOct <4){
-          index = ((((stepSizes[i] >> -(localOct-4)))*phaseAcc) >> 22)% 360;
-        }
-        else {
-          index = ((((stepSizes[i] << (localOct-4)))*phaseAcc) >> 22)% 360;
-        }
-        if (index >=180){
-          Vfinal_zeroCount += -LUT[(index-180)>>1];
-        }
-        else{
-          Vfinal_zeroCount += LUT[(index) >> 1];
-        }
+      else{
+        phaseAcc += currentStepSize << (localOct-4);
       }
     }
+  }
+  Vout = (phaseAcc >> 24) - 128;
+  Vout = Vout >> (8-knob3Rotation);
+  V_global = phaseAcc;
+  analogWrite(OUTR_PIN, (Vout + 128));
+  }
+
+
+// void sampleISR() {
+//     static uint32_t phaseAcc = 0;
+//     uint32_t Vout;
+//     const char* tempkeyVal = keyStr.c_str(); // avoid using std::string
+//     uint32_t currentStepCounter = 1; // use unsigned integer
+//     uint32_t Vfinal_zeroCount = 0; // combined variable
+//     uint32_t index = 0;
+//     int localOct = OCTAVE;
+
+//     for (int i = 0; i < 24; i++){
+//       if (i==12){
+//           localOct +=1;
+//       }
+//       if (tempkeyVal[i] == '0'){
+//         currentStepCounter = 1;
+        
+//         if (localOct <4){
+//           index = ((((stepSizes[i] >> -(localOct-4)))*phaseAcc) >> 22)% 360;
+//         }
+//         else {
+//           index = ((((stepSizes[i] << (localOct-4)))*phaseAcc) >> 22)% 360;
+//         }
+//         if (index >=180){
+//           Vfinal_zeroCount += -LUT[(index-180)>>1];
+//         }
+//         else{
+//           Vfinal_zeroCount += LUT[(index) >> 1];
+//         }
+//       }
+//     }
   
-    uint32_t Vfinal = Vfinal_zeroCount >> (34-volVar); // calculate final Vfinal
-    V_global = Vfinal; 
-    phaseAcc += currentStepCounter;
-    analogWrite(OUTR_PIN, Vfinal);
-}
+//     uint32_t Vfinal = Vfinal_zeroCount >> (34-volVar); // calculate final Vfinal
+//     V_global = Vfinal; 
+//     phaseAcc += currentStepCounter;
+//     analogWrite(OUTR_PIN, Vfinal);
+// }
 
 uint32_t chords(std::string keyStr){
   int zeroCount = 0;
@@ -295,7 +299,7 @@ uint32_t chords(std::string keyStr){
   // if (zeroCount != 0){
   //   sum /= zeroCount;
   // }
-  return sum;
+  return localCurrentStepSize;
 }
 
 uint32_t countZero(std::string keyStr){
@@ -418,31 +422,19 @@ void scanKeysTask(void * pvParameters){
     }
     
 
-    //uint32_t sumMaster = chords(keyStr,OCTAVE);
+    uint32_t sumMaster = chords(keyStr);
 
-    // if (localCurrentStepSize != 0) {
-    //   localCurrentStepSize = (sumSlave +  sumMaster) / (countZero(RX_keyStr) + countZero(keyStr));
-    // }
-    // else{
-    //   localCurrentStepSize = (sumSlave +  sumMaster);
-    // }
+    if (localCurrentStepSize != 0) {
+      localCurrentStepSize = (sumSlave +  sumMaster) / (countZero(RX_keyStr) + countZero(keyStr));
+    }
+    else{
+      localCurrentStepSize = (sumSlave +  sumMaster);
+    }
     // const char* tempkeyVal = Key_string.c_str(); // avoid using std::string
     // uint32_t currentStepCounter = 1; // use unsigned integer
 
-    // for (int i = 0; i < 12; i++){
-    //   if (tempkeyVal[i] == '0'){
-    //     currentStepCounter = 1;
-    //     uint32_t index = ((((stepSizes[i] >> 0))*phaseAcc) >> 22)%360;
-    //     if (index >=180){
-    //       Vfinal_zeroCount += -LUT[(index-180)>>1];
-    //     }
-    //     else{
-    //       Vfinal_zeroCount += LUT[(index) >> 1];
-    //     }
-    //   }
-    // }
     
-    // __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
 
 
