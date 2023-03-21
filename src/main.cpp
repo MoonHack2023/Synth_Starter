@@ -279,14 +279,11 @@ uint32_t countZero(std::string keyStr){
 
 // Everything that's relevant to scanning the Keys
 void scanKeysTask(void * pvParameters){
-
-  Serial.println("SCAN");
+  // Serial.println("SCAN");
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint8_t TX_Message[8] = {0};
   uint8_t prevTX_Message;
-  while(1){
-    vTaskDelayUntil( &xLastWakeTime, xFrequency);
     // const int NUM_ROWS = 3; // define a constant for the number of rows
     uint32_t localCurrentStepSizeT = 0;
     uint32_t localCurrentStepSizeR = 0;
@@ -421,7 +418,7 @@ void scanKeysTask(void * pvParameters){
     // Serial.println(knob3Rotation);
     // __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
-}
+
 
 // Display it on the screen
 void displayUpdateTask(void *  pvParameters){
@@ -505,6 +502,7 @@ void CAN_TX_ISR (void) {
 
 void setup() {
   // put your setup code here, to run once:
+  
   msgInQ = xQueueCreate(36,8);
   msgOutQ = xQueueCreate(36,8);
   keyArrayMutex = xSemaphoreCreateMutex();
@@ -545,16 +543,18 @@ void setup() {
 
   //Initialise UART
   Serial.begin(9600);
-  // Serial.println("Hello World");
-  sine_LUT();
+  Serial.println("FROM SETUP");
 
-  TIM_TypeDef *Instance = TIM1;
-  HardwareTimer *sampleTimer = new HardwareTimer(Instance);
-  sampleTimer->setOverflow(22000, HERTZ_FORMAT);
-  // if (master){
-  sampleTimer->attachInterrupt(sampleISR);
- //}
-  sampleTimer->resume();
+  // Serial.println("Hello World");
+//   sine_LUT();
+
+//   TIM_TypeDef *Instance = TIM1;
+//   HardwareTimer *sampleTimer = new HardwareTimer(Instance);
+//   sampleTimer->setOverflow(22000, HERTZ_FORMAT);
+//   // if (master){
+//   sampleTimer->attachInterrupt(sampleISR);
+//  //}
+//   sampleTimer->resume();
 
 
   
@@ -567,38 +567,41 @@ void setup() {
     4,			/* Task priority */
     &scanKeysHandle );  /* Pointer to store the task handle */
   
-  TaskHandle_t displayUpdateHandle = NULL;
-  xTaskCreate(
-    displayUpdateTask,		/* Function that implements the task */
-    "displayUpdate",		/* Text name for the task */
-    256,      		/* Stack size in words, not bytes */
-    NULL,			/* Parameter passed into the task */
-    3,			/* Task priority */
-    &displayUpdateHandle );  /* Pointer to store the task handle */
-
-  TaskHandle_t decodeHandle = NULL;
-  xTaskCreate(
-    decodeTask,		/* Function that implements the task */
-    "decode",		/* Text name for the task */
-    32,      		/* Stack size in words, not bytes */
-    NULL,			/* Parameter passed into the task */
-    2,			/* Task priority */
-    &decodeHandle );  /* Pointer to store the task handle */
+  // TaskHandle_t displayUpdateHandle = NULL;
+  // xTaskCreate(
+  //   displayUpdateTask,		/* Function that implements the task */
+  //   "displayUpdate",		/* Text name for the task */
+  //   256,      		/* Stack size in words, not bytes */
+  //   NULL,			/* Parameter passed into the task */
+  //   3,			/* Task priority */
+  //   &displayUpdateHandle );  /* Pointer to store the task handle */
   
-  TaskHandle_t CAN_TXHandle = NULL;
-  xTaskCreate(
-    CAN_TX_Task,		/* Function that implements the task */
-    "CAN_TX",		/* Text name for the task */
-    32,      		/* Stack size in words, not bytes */
-    NULL,			/* Parameter passed into the task */
-    1,			/* Task priority */
-    &CAN_TXHandle );  /* Pointer to store the task handle */
-
+  uint32_t startTime = micros();
+  for (int iter = 0; iter < 32; iter++) {
+    scanKeysTask(NULL);
+  }
+  Serial.println(micros()-startTime);
   
 
-
+  // TaskHandle_t decodeHandle = NULL;
+  // xTaskCreate(
+  //   decodeTask,		/* Function that implements the task */
+  //   "decode",		/* Text name for the task */
+  //   32,      		/* Stack size in words, not bytes */
+  //   NULL,			/* Parameter passed into the task */
+  //   2,			/* Task priority */
+  //   &decodeHandle );  /* Pointer to store the task handle */
   
-  vTaskStartScheduler();
+  // TaskHandle_t CAN_TXHandle = NULL;
+  // xTaskCreate(
+  //   CAN_TX_Task,		/* Function that implements the task */
+  //   "CAN_TX",		/* Text name for the task */
+  //   32,      		/* Stack size in words, not bytes */
+  //   NULL,			/* Parameter passed into the task */
+  //   1,			/* Task priority */
+  //   &CAN_TXHandle );  /* Pointer to store the task handle */
+  
+  // vTaskStartScheduler();
 }
 
 void loop() {
@@ -608,8 +611,8 @@ void loop() {
     // Serial.println(knob1Rotation);
     //classptr->printGlobalVariable();
     // knob3ptr-> print();
-    Serial.print("WEST: ");
-    Serial.println(keyStrArray[5].c_str());
-    Serial.print("EAST: ");
-    Serial.println(keyStrArray[6].c_str());
+    // Serial.print("WEST: ");
+    // Serial.println(keyStrArray[5].c_str());
+    // Serial.print("EAST: ");
+    // Serial.println(keyStrArray[6].c_str());
 }
