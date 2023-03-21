@@ -378,6 +378,11 @@ void scanKeysTask(void * pvParameters){
         sumSlave = chords(RX_keyStr,OCTAVE-1);
       }
     }
+
+    for (int i = 0; i < 7; i++){
+        keyStrArray[i] = "0000";
+    }
+    keyStr = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2] + keyStrArray[3]; // + keyStrArray[4] + keyStrArray[5] + keyStrArray[6];
     
 
     uint32_t sumMaster = chords(keyStr,OCTAVE);
@@ -422,14 +427,14 @@ void scanKeysTask(void * pvParameters){
 
 // Display it on the screen
 void displayUpdateTask(void *  pvParameters){
-  Serial.println("DISPLAY");
+  //Serial.println("DISPLAY");
   const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint32_t ID = 0x123;
 
-  while(1){
+  // while(1) was here {
     // Serial.println("DISPLAY");
-    vTaskDelayUntil( &xLastWakeTime, xFrequency);
+    //vTaskDelayUntil( &xLastWakeTime, xFrequency);
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
     // u8g2.drawStr(2,10,"Hello World!"); // write something to the internal memory
@@ -452,7 +457,7 @@ void displayUpdateTask(void *  pvParameters){
     
     u8g2.sendBuffer();
     
-  }  
+  
 }
 
 void decodeTask(void *  pvParameters){
@@ -558,27 +563,27 @@ void setup() {
 
 
   
-  TaskHandle_t scanKeysHandle = NULL;
-  xTaskCreate(
-    scanKeysTask,		/* Function that implements the task */
-    "scanKeys",		/* Text name for the task */
-    64,      		/* Stack size in words, not bytes */
-    NULL,			/* Parameter passed into the task */
-    4,			/* Task priority */
-    &scanKeysHandle );  /* Pointer to store the task handle */
-  
-  // TaskHandle_t displayUpdateHandle = NULL;
+  // TaskHandle_t scanKeysHandle = NULL;
   // xTaskCreate(
-  //   displayUpdateTask,		/* Function that implements the task */
-  //   "displayUpdate",		/* Text name for the task */
-  //   256,      		/* Stack size in words, not bytes */
+  //   scanKeysTask,		/* Function that implements the task */
+  //   "scanKeys",		/* Text name for the task */
+  //   64,      		/* Stack size in words, not bytes */
   //   NULL,			/* Parameter passed into the task */
-  //   3,			/* Task priority */
-  //   &displayUpdateHandle );  /* Pointer to store the task handle */
+  //   4,			/* Task priority */
+  //   &scanKeysHandle );  /* Pointer to store the task handle */
+  
+  TaskHandle_t displayUpdateHandle = NULL;
+  xTaskCreate(
+    displayUpdateTask,		/* Function that implements the task */
+    "displayUpdate",		/* Text name for the task */
+    256,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    3,			/* Task priority */
+    &displayUpdateHandle );  /* Pointer to store the task handle */
   
   uint32_t startTime = micros();
   for (int iter = 0; iter < 32; iter++) {
-    scanKeysTask(NULL);
+    displayUpdateTask(NULL);
   }
   Serial.println(micros()-startTime);
   
