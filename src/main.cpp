@@ -461,23 +461,24 @@ void displayUpdateTask(void *  pvParameters){
 }
 
 void decodeTask(void *  pvParameters){
-  Serial.println("DECODE");
+  //Serial.println("DECODE");
   uint32_t ID = 0x123;
   uint32_t localCurrentStepSize;
   uint8_t Local_RX_Message[8];
   // Serial.println("DECODE");
-  while (1){
+  // while (1){
     xSemaphoreTake(RXMutex, portMAX_DELAY);
-    xQueueReceive(msgInQ, Local_RX_Message, portMAX_DELAY);
+    xQueueReceive(msgInQ, Local_RX_Message, portMAX_DELAY); // i think comment this line out to for timing for DECODE TASK
     // Serial.print("Local:");
     // Serial.println(Local_RX_Message[1]);
     memcpy(RX_Message, Local_RX_Message, sizeof(RX_Message));
     // mem(RX_Message, RX_Message + sizeof(RX_Message)/sizeof(RX_Message), Local_RX_Message);
     xSemaphoreGive(RXMutex);
+
     // Serial.print("Global: ");
     // Serial.println(RX_Message[1]);
   
-  }  
+  //} while loop bracket
 }
 
 void CAN_RX_ISR (void) {
@@ -488,13 +489,14 @@ void CAN_RX_ISR (void) {
 }
 
 void CAN_TX_Task (void * pvParameters) {
-  Serial.println("CAN");
+  //Serial.println("CAN");
 	uint8_t msgOut[8];
-	while (1) {
+	//while (1) { comment out the while loop
 	   xQueueReceive(msgOutQ, msgOut, portMAX_DELAY);
-	   xSemaphoreTake(CAN_TX_Semaphore, portMAX_DELAY);
+	   xSemaphoreTake(CAN_TX_Semaphore, portMAX_DELAY); 
 	   CAN_TX(0x123, msgOut);
-	}
+     xSemaphoreGive(CAN_TX_Semaphore); //added for timing
+	//}
 }
 
 void CAN_TX_ISR (void) {
@@ -508,12 +510,12 @@ void CAN_TX_ISR (void) {
 void setup() {
   // put your setup code here, to run once:
   
-  msgInQ = xQueueCreate(36,8);
-  msgOutQ = xQueueCreate(36,8);
+  msgInQ = xQueueCreate(384,3);
+  msgOutQ = xQueueCreate(384,3);
   keyArrayMutex = xSemaphoreCreateMutex();
   RXMutex = xSemaphoreCreateMutex();  
-  CAN_TX_Semaphore = xSemaphoreCreateCounting(3,3);
-
+  CAN_TX_Semaphore = xSemaphoreCreateCounting(3,3);  // for timing i think we need more
+  uint8_t test_send[8]={0};
   //Set pin directions
   pinMode(RA0_PIN, OUTPUT);
   pinMode(RA1_PIN, OUTPUT);
@@ -550,6 +552,19 @@ void setup() {
   Serial.begin(9600);
   Serial.println("FROM SETUP");
 
+  // for timing CAN_TX_TASK
+
+  for (int iter = 0; iter < 32; iter++) {
+      xQueueSend( msgOutQ, test_send, portMAX_DELAY);
+    }
+
+
+  uint32_t startTime = micros();
+  for (int iter = 0; iter < 32; iter++) {
+    CAN_TX_Task(NULL);  // FOR CAN you need to go click on  CAN_TX_TASK and comment line 111 in the library
+  } 
+  Serial.println(micros()-startTime);
+
   // Serial.println("Hello World");
 //   sine_LUT();
 
@@ -572,20 +587,16 @@ void setup() {
   //   4,			/* Task priority */
   //   &scanKeysHandle );  /* Pointer to store the task handle */
   
-  TaskHandle_t displayUpdateHandle = NULL;
-  xTaskCreate(
-    displayUpdateTask,		/* Function that implements the task */
-    "displayUpdate",		/* Text name for the task */
-    256,      		/* Stack size in words, not bytes */
-    NULL,			/* Parameter passed into the task */
-    3,			/* Task priority */
-    &displayUpdateHandle );  /* Pointer to store the task handle */
+  // TaskHandle_t displayUpdateHandle = NULL;
+  // xTaskCreate(
+  //   displayUpdateTask,		/* Function that implements the task */
+  //   "displayUpdate",		/* Text name for the task */
+  //   256,      		/* Stack size in words, not bytes */
+  //   NULL,			/* Parameter passed into the task */
+  //   3,			/* Task priority */
+  //   &displayUpdateHandle );  /* Pointer to store the task handle */
   
-  uint32_t startTime = micros();
-  for (int iter = 0; iter < 32; iter++) {
-    displayUpdateTask(NULL);
-  }
-  Serial.println(micros()-startTime);
+  
   
 
   // TaskHandle_t decodeHandle = NULL;
@@ -596,7 +607,12 @@ void setup() {
   //   NULL,			/* Parameter passed into the task */
   //   2,			/* Task priority */
   //   &decodeHandle );  /* Pointer to store the task handle */
+
+    
   
+
+    
+
   // TaskHandle_t CAN_TXHandle = NULL;
   // xTaskCreate(
   //   CAN_TX_Task,		/* Function that implements the task */
