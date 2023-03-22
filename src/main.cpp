@@ -145,7 +145,41 @@ void clip (int& knobRotation, int max, int min){
     knobRotation = min;
   }
 }
+const int LUT_SIZE = 1024;
+int32_t LUT[LUT_SIZE];
 
+void sine_LUT() {
+  const float step = 2.0 * PI / LUT_SIZE;
+  for (int i = 0; i < LUT_SIZE; i++) {
+    float angle = i * step;
+    LUT[i] = (int32_t)(127.0f * sinf(angle)) + 128;
+  }
+}
+
+//WAVES CLASS
+class Waves {
+  private:
+  public:
+  int32_t get_sine(uint32_t phaseAcc){
+    uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
+    int32_t sineValue = LUT[index];
+    if (volVar==8){
+      sineValue = sineValue << 1;
+    }
+    else{
+      sineValue = sineValue >> (8 - (volVar+1));
+    }
+    return sineValue;
+  }
+  int32_t get_sawtooth(uint32_t phaseAcc){
+    int32_t Vout = (phaseAcc >> 24) - 128;
+    Vout = Vout >> (8 - volVar);
+    Vout = Vout + 128;
+    return Vout;
+  }
+};
+
+Waves wave;
 
 // KNOB CLASS
 class Knob {
@@ -187,7 +221,7 @@ class Knob {
         }
       }
       else if ((knobId == 0)){
-        clip(knobRotation, 2, 0);
+        clip(knobRotation, 1, 0);
         // master = bool(knobRotation);
       }
       // else if ((knobId == 1)){
@@ -224,8 +258,7 @@ Knob knob1(1);
 
 
 const uint32_t stepSizes [] = {
-
-  51076922, //C4
+      51076922, //C4
       54112683, //C#4
       57330004, //D4
       60740598, //D#4
@@ -239,16 +272,6 @@ const uint32_t stepSizes [] = {
       96426316, //B4
 };
 
-const int LUT_SIZE = 1024;
-int32_t LUT[LUT_SIZE];
-
-void sine_LUT() {
-  const float step = 2.0 * PI / LUT_SIZE;
-  for (int i = 0; i < LUT_SIZE; i++) {
-    float angle = i * step;
-    LUT[i] = (int32_t)(127.0f * sinf(angle)) + 128;
-  }
-}
 
 // // Sawtooth wave
 // void sampleISR() {
@@ -260,14 +283,31 @@ void sine_LUT() {
 // }
 
 //Sine wave
+// void sampleISR() {
+//   static uint32_t phaseAcc = 0;
+//   phaseAcc += currentStepSize;
+//   uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size (2024 = 2^10)
+//   int32_t sineValue = LUT[index];
+//   sineValue = sineValue >> (8 - volVar);
+//   analogWrite(OUTR_PIN, sineValue);
+// }
+
 void sampleISR() {
   static uint32_t phaseAcc = 0;
+  int32_t Vout;
   phaseAcc += currentStepSize;
-  uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size (2024 = 2^10)
-  int32_t sineValue = LUT[index];
-  sineValue = sineValue >> (8 - volVar);
-  analogWrite(OUTR_PIN, sineValue);
+  if (waveVar==0){
+    Vout = wave.get_sawtooth(phaseAcc);
+  }
+  else if (waveVar==1){
+    Vout = wave.get_sine(phaseAcc);
+  }
+  analogWrite(OUTR_PIN, Vout);
 }
+
+
+
+
 
 
 // Create chords by summing the currentstepsize of each key 
@@ -384,7 +424,6 @@ void scanKeysTask(void * pvParameters){
   }
 
   knob1.decodeKnob(keyStrArray[4].substr(0, 2));
-
   knob3.decodeKnob(keyStrArray[3].substr(0, 2));
   volVar = knob3.knobRotation;
   knob2.decodeKnob(keyStrArray[3].substr(2, 4));
@@ -409,18 +448,13 @@ void displayUpdateTask(void *  pvParameters){
     
     u8g2.drawStr(2,10, keyStr.c_str());
     u8g2.drawStr(2,20, RX_keyStr.c_str());
-    
     std::string wave = "Wav: " + std::to_string(waveVar);
     u8g2.drawStr(2,30, wave.c_str());
-
     std::string octave = "Oct: " + std::to_string(OCTAVE);
     u8g2.drawStr(40,30, octave.c_str());
-
     std::string vol = "Vol: " + std::to_string(volVar);
     u8g2.drawStr(70,30, vol.c_str());
-
     u8g2.drawStr(115,30, master ? "M": "S");
-    
     u8g2.sendBuffer();
     
   }  
