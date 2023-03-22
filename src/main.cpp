@@ -145,41 +145,6 @@ void clip (int& knobRotation, int max, int min){
     knobRotation = min;
   }
 }
-const int LUT_SIZE = 1024;
-int32_t LUT[LUT_SIZE];
-
-void sine_LUT() {
-  const float step = 2.0 * PI / LUT_SIZE;
-  for (int i = 0; i < LUT_SIZE; i++) {
-    float angle = i * step;
-    LUT[i] = (int32_t)(127.0f * sinf(angle)) + 128;
-  }
-}
-
-//WAVES CLASS
-class Waves {
-  private:
-  public:
-  int32_t get_sine(uint32_t phaseAcc){
-    uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
-    int32_t sineValue = LUT[index];
-    if (volVar==8){
-      sineValue = sineValue << 1;
-    }
-    else{
-      sineValue = sineValue >> (8 - (volVar+1));
-    }
-    return sineValue;
-  }
-  int32_t get_sawtooth(uint32_t phaseAcc){
-    int32_t Vout = (phaseAcc >> 24) - 128;
-    Vout = Vout >> (8 - volVar);
-    Vout = Vout + 128;
-    return Vout;
-  }
-};
-
-Waves wave;
 
 // KNOB CLASS
 class Knob {
@@ -238,7 +203,7 @@ class Knob {
           else if (knobRotation < 0){
             knobRotation = 0;
           }
-          Serial.println("IN DECODE CLASS");
+          // Serial.println("IN DECODE CLASS");
           
           if (knobRotation == 1){
             master = true;
@@ -292,15 +257,67 @@ const uint32_t stepSizes [] = {
 //   analogWrite(OUTR_PIN, sineValue);
 // }
 
+const int LUT_SIZE = 128;
+int32_t LUT[LUT_SIZE];
+
+void sine_LUT() {
+  const float step = 2.0 * PI / LUT_SIZE;
+  for (int i = 0; i < LUT_SIZE; i++) {
+    float angle = i * step;
+    LUT[i] = (int32_t)(127.0f * sinf(angle)) + 128;
+  }
+}
+
+//WAVES CLASS
+class Waves {
+  private:
+  public:
+  int32_t get_sine(uint32_t phaseAcc){
+  const char* tempkeyVal = keyStr.c_str();
+  uint32_t Vout_zeroCount = 0;
+  uint32_t index = 0;
+  int32_t localOct = OCTAVE;
+
+  for (int i = 0; i < 12; i++){
+    if (tempkeyVal[i] == '0'){
+      if (localOct < 4){
+        index = ((((stepSizes[i] >> -(OCTAVE-4)))*phaseAcc) >> 22)% 360;
+      }
+      else {
+        index = ((((stepSizes[i] << (OCTAVE-4)))*phaseAcc) >> 22)% 360;
+      }
+      if (index > 180){
+        Vout_zeroCount += -LUT[(index - 180) >> 1];
+      }
+      else {
+        Vout_zeroCount += LUT[(index) >> 1];
+      }
+    }
+  }
+  uint32_t Vout = Vout_zeroCount >> (34-volVar);
+  return Vout;
+  }
+  int32_t get_sawtooth(uint32_t phaseAcc){
+    int32_t Vout = (phaseAcc >> 24) - 128;
+    Vout = Vout >> (8 - volVar);
+    Vout = Vout + 128;
+    return Vout;
+  }
+};
+
+Waves wave;
+
 void sampleISR() {
   static uint32_t phaseAcc = 0;
   int32_t Vout;
-  phaseAcc += currentStepSize;
   if (waveVar==0){
+    phaseAcc += currentStepSize;
     Vout = wave.get_sawtooth(phaseAcc);
   }
   else if (waveVar==1){
+    uint32_t currentStepCounter = 1;
     Vout = wave.get_sine(phaseAcc);
+    phaseAcc += currentStepCounter;
   }
   analogWrite(OUTR_PIN, Vout);
 }
