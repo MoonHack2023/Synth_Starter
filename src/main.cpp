@@ -52,6 +52,8 @@ SemaphoreHandle_t RXMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
 volatile int rotationVar = 0;
 volatile int octaveVar = 0;
+volatile int volVar = 0;
+volatile int octVar = 0;
 std::string prevKnob3 = "00";
 std::string prevKnob2 = "00";
 int knob3Rotation = 0;
@@ -91,6 +93,15 @@ void setOutMuxBit(const uint8_t bitIdx, const bool value) {
       digitalWrite(REN_PIN,LOW);
 }
 
+void clip (int& knobRotation, int max, int min){
+  if (knobRotation > max){
+    knobRotation = max;
+  }
+  else if (knobRotation < min){
+    knobRotation = min;
+  }
+}
+
   // Function to concatenate bits
   uint8_t concatenateBits(int c0, int c1, int c2, int c3){
     uint8_t result = 0;
@@ -120,6 +131,61 @@ void setRow(uint8_t rowIdx){
   digitalWrite(RA2_PIN, rowIdx & 0b100);
   digitalWrite(REN_PIN,HIGH);
 }
+
+class Knob {
+    private:
+      int knobId;
+    public:
+      std::string prevKnob = "00";
+      int knobRotation = 0;
+        Knob(int knob_id) {
+          knobId = knob_id;
+        }
+        void printknobRotation() {
+            Serial.println(knobRotation);
+        }
+      void decodeKnob(std::string currentKnob){
+      int rotationVar = 0;
+      if (prevKnob == "00" && currentKnob == "01"){
+        rotationVar = -1;
+      }
+      else if (prevKnob == "01" && currentKnob == "00"){
+        rotationVar = 1;
+      }
+      else if (prevKnob == "10" && currentKnob == "11"){
+        rotationVar = 1;
+      }
+      else if (prevKnob == "11" && currentKnob == "10"){
+        rotationVar = -1;
+      }
+      else{
+        rotationVar = 0;
+      }
+      knobRotation += rotationVar;
+      if (knobId == 3){
+        if (!master){
+          knobRotation = 0;
+        }
+        else{
+          clip(knobRotation, 8, 0);
+        }
+      }
+      else if (knobId == 1){
+        clip(knobRotation, 1, 0);
+        // master = bool(knobRotation);
+      }
+      else{
+        clip(knobRotation, 8, 0);
+      }
+      prevKnob = currentKnob;
+    }
+};
+
+Knob knob3(3);
+Knob knob2(2);
+
+
+
 
 // Decode the rightest Knob
 void decodeKnob3(){
@@ -210,7 +276,7 @@ void sampleISR() {
   static uint32_t phaseAcc = 0;
   phaseAcc += currentStepSize;
   int32_t Vout = (phaseAcc >> 24) - 128;
-  Vout = Vout >> (8 - knob3Rotation);
+  Vout = Vout >> (8 - volVar);
   analogWrite(OUTR_PIN, (Vout + 128));
 }
 
@@ -304,44 +370,43 @@ void scanKeysTask(void * pvParameters){
       TX_Message[4] = hi_val;
     }
   
-  if (master){
-    xSemaphoreTake(RXMutex, portMAX_DELAY);
-      // detect press messages
-    if (RX_Message[0] == 80){
-      localCurrentStepSizeR = stepSizes[RX_Message[2]];
-      localCurrentStepSizeR = localCurrentStepSizeR << (RX_Message[1] - 4);
+    if (master){
+      xSemaphoreTake(RXMutex, portMAX_DELAY);
+        // detect press messages
+      if (RX_Message[0] == 80){
+        localCurrentStepSizeR = stepSizes[RX_Message[2]];
+        localCurrentStepSizeR = localCurrentStepSizeR << (RX_Message[1] - 4);
+      }
+      std::bitset<6> binaryHigh(RX_Message[3]);
+      std::string binaryHighStr = binaryHigh.to_string();
+      std::bitset<6> binaryLow(RX_Message[4]);
+      std::string binaryLowStr = binaryLow.to_string();
+      RX_keyStr = binaryHighStr + binaryLowStr;
+      
+      xSemaphoreGive(RXMutex);
+      
+      uint32_t sumMaster = chords(keyStr,OCTAVE);
+      uint32_t sumSlave = chords(RX_keyStr,RX_Message[1]);
+
+      if (localCurrentStepSize != 0) {
+        localCurrentStepSize = (sumSlave +  sumMaster) / (countZero(RX_keyStr) + countZero(keyStr));
+      }
+      else{
+        localCurrentStepSize = (sumSlave +  sumMaster);
+      }
+      __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
     }
-    std::bitset<6> binaryHigh(RX_Message[3]);
-    std::string binaryHighStr = binaryHigh.to_string();
-    std::bitset<6> binaryLow(RX_Message[4]);
-    std::string binaryLowStr = binaryLow.to_string();
-    RX_keyStr = binaryHighStr + binaryLowStr;
-    
-    xSemaphoreGive(RXMutex);
-    
-    uint32_t sumMaster = chords(keyStr,OCTAVE);
-    uint32_t sumSlave = chords(RX_keyStr,RX_Message[1]);
 
-    if (localCurrentStepSize != 0) {
-      localCurrentStepSize = (sumSlave +  sumMaster) / (countZero(RX_keyStr) + countZero(keyStr));
+    std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
+    if (!master){
+      xQueueSend( msgOutQ, TX_Message, portMAX_DELAY);
     }
-    else{
-      localCurrentStepSize = (sumSlave +  sumMaster);
-    }
-
-    
-    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
-  }
-
-  std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
-  
-  if (!master){
-    xQueueSend( msgOutQ, TX_Message, portMAX_DELAY);
-  }
-
-  decodeKnob3();
-  decodeKnob2();
-    
+    //decodeKnob3();
+    //decodeKnob2();
+    knob3.decodeKnob(keyStrArray[3].substr(0, 2));
+    volVar = knob3.knobRotation;
+    knob2.decodeKnob(keyStrArray[3].substr(2, 4));
+    OCTAVE = knob2.knobRotation;
   }
 }
 
@@ -360,7 +425,7 @@ void displayUpdateTask(void *  pvParameters){
     u8g2.drawStr(2,10, keyStr.c_str());
     u8g2.drawStr(2,20, RX_keyStr.c_str());
     
-    std::string vol = "Vol: " + std::to_string(knob3Rotation);
+    std::string vol = "Vol: " + std::to_string(volVar);
     u8g2.drawStr(66,30, vol.c_str());
     std::string octave = "Octave: " + std::to_string(OCTAVE);
     u8g2.drawStr(2,30, octave.c_str());
@@ -501,4 +566,7 @@ void setup() {
 }
 
 void loop() {
+  Serial.print(octVar);
+  Serial.println(volVar);
+
 }
