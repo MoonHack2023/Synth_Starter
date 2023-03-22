@@ -223,47 +223,6 @@ Knob knob0(0);
 Knob knob1(1);
 
 
-
-// void decodeKnob1(){
-//   std::string currentKnob1 = keyStrArray[4].substr(0, 2); 
-//   //Serial.println(keyStrArray[3]);
-
-//   if (prevKnob1 == "00" && currentKnob1 == "01"){
-//     masVar = -1;
-//   }
-//   else if (prevKnob1 == "01" && currentKnob1 == "00"){
-//     masVar = 1;
-//   }
-//   else if (prevKnob1 == "10" && currentKnob1 == "11"){
-//     masVar = 1;
-//   }
-//   else if (prevKnob1 == "11" && currentKnob1 == "10"){
-//     masVar = -1;
-//   }
-//   else{
-//     masVar = 0;
-//   }
-
-//   knob1Rotation += masVar;
-
-//   if (knob1Rotation > 1){
-//     knob1Rotation = 1;
-//   }
-//   else if (knob1Rotation < 0){
-//     knob1Rotation = 0;
-//   }
-//   Serial.println("IN DECODE");
-  
-//   if (knob1Rotation == 1){
-//     master = true;
-//   }
-//   else{
-//     master = false;
-//   }
-
-//   prevKnob1 = currentKnob1;
-// }
-
 const uint32_t stepSizes [] = {
 
   51076922, //C4
@@ -451,11 +410,16 @@ void displayUpdateTask(void *  pvParameters){
     u8g2.drawStr(2,10, keyStr.c_str());
     u8g2.drawStr(2,20, RX_keyStr.c_str());
     
-    std::string vol = "Vol: " + std::to_string(volVar);
-    u8g2.drawStr(40,30, vol.c_str());
+    std::string wave = "Wav: " + std::to_string(waveVar);
+    u8g2.drawStr(2,30, wave.c_str());
+
     std::string octave = "Oct: " + std::to_string(OCTAVE);
-    u8g2.drawStr(2,30, octave.c_str());
-    u8g2.drawStr(90,30, master ? "M": "S");
+    u8g2.drawStr(40,30, octave.c_str());
+
+    std::string vol = "Vol: " + std::to_string(volVar);
+    u8g2.drawStr(70,30, vol.c_str());
+
+    u8g2.drawStr(115,30, master ? "M": "S");
     
     u8g2.sendBuffer();
     
