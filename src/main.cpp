@@ -10,10 +10,8 @@
 
 // Define the max() macro
 #define max(a, b) ((a) > (b) ? (a) : (b))
-
 //Constants
   const uint32_t interval = 100; //Display update interval
-
 //Pin definitions
   //Row select and enable
   const int RA0_PIN = D3;
@@ -47,8 +45,7 @@ U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
 
 //Check current step size
 volatile uint32_t currentStepSize;
-volatile uint8_t keyArray[7];
-const int NUM_ROWS = 4; // define a constant for the number of rows
+const int NUM_ROWS = 7; // define a constant for the number of rows
 std::string keyStrArray[7];
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t RXMutex;
@@ -82,7 +79,6 @@ const std::string noteNames[NUM_ROWS][4] = {
   {"G#4", "A4", "A#4", "B4"}
 };
 
-
 //Function to set outputs using key matrix
 void setOutMuxBit(const uint8_t bitIdx, const bool value) {
       digitalWrite(REN_PIN,LOW);
@@ -107,15 +103,13 @@ void setOutMuxBit(const uint8_t bitIdx, const bool value) {
 
   //Function to read the inputs from the four columns of the switch matrix (C0,1,2,3) and return the four bits concatenated together as a single byte
   uint8_t readCols(){
-
-  int c0state = digitalRead(C0_PIN);
-  int c1state = digitalRead(C1_PIN);
-  int c2state = digitalRead(C2_PIN);
-  int c3state = digitalRead(C3_PIN);
-
-  // Call the concatenateBits() function with the read states
-  uint8_t cols = concatenateBits(c0state, c1state, c2state, c3state);
-  return cols;
+    int c0state = digitalRead(C0_PIN);
+    int c1state = digitalRead(C1_PIN);
+    int c2state = digitalRead(C2_PIN);
+    int c3state = digitalRead(C3_PIN);
+    // Call the concatenateBits() function with the read states
+    uint8_t cols = concatenateBits(c0state, c1state, c2state, c3state);
+    return cols;
 }
 
 //Select a given row of the switch matrix by setting the value of each row select address pin 
@@ -131,7 +125,6 @@ void setRow(uint8_t rowIdx){
 void decodeKnob3(){
   std::string currentKnob3 = keyStrArray[3].substr(0, 2); 
   //Serial.println(keyStrArray[3]);
-
   if (prevKnob3 == "00" && currentKnob3 == "01"){
     rotationVar = -1;
   }
@@ -148,22 +141,18 @@ void decodeKnob3(){
     rotationVar = 0;
   }
   knob3Rotation += rotationVar;
-
   if (knob3Rotation > 8){
     knob3Rotation = 8;
   }
   else if (knob3Rotation < 0){
     knob3Rotation = 0;
   }
-
   prevKnob3 = currentKnob3;
 }
 
 // Decode the rightest Knob
 void decodeKnob2(){
   std::string currentKnob2 = keyStrArray[3].substr(2, 4); 
-  //Serial.println(keyStrArray[3]);
-
   if (prevKnob2 == "00" && currentKnob2 == "01"){
     octaveVar = -1;
   }
@@ -179,23 +168,19 @@ void decodeKnob2(){
   else{
     octaveVar = 0;
   }
-
   knob2Rotation += octaveVar;
-
   if (knob2Rotation > 8){
     knob2Rotation = 8;
   }
   else if (knob2Rotation < 0){
     knob2Rotation = 0;
   }
-
   OCTAVE = knob2Rotation;
   prevKnob2 = currentKnob2;
 }
 
 const uint32_t stepSizes [] = {
-
-  51076922, //C4
+      51076922, //C4
       54112683, //C#4
       57330004, //D4
       60740598, //D#4
@@ -220,25 +205,24 @@ void sine_LUT() {
   }
 }
 
-// // Sawtooth wave
-// void sampleISR() {
-//   static uint32_t phaseAcc = 0;
-//   phaseAcc += currentStepSize;
-//   int32_t Vout = (phaseAcc >> 24) - 128;
-//   Vout = Vout >> (8 - knob3Rotation);
-//   analogWrite(OUTR_PIN, (Vout + 128));
-// }
-
-//Sine wave
+// Sawtooth wave
 void sampleISR() {
   static uint32_t phaseAcc = 0;
   phaseAcc += currentStepSize;
-  uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
-  int32_t sineValue = LUT[index];
-  sineValue = sineValue >> (8 - knob3Rotation);
-  analogWrite(OUTR_PIN, sineValue);
+  int32_t Vout = (phaseAcc >> 24) - 128;
+  Vout = Vout >> (8 - knob3Rotation);
+  analogWrite(OUTR_PIN, (Vout + 128));
 }
 
+// //Sine wave
+// void sampleISR() {
+//   static uint32_t phaseAcc = 0;
+//   phaseAcc += currentStepSize;
+//   uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
+//   int32_t sineValue = LUT[index];
+//   sineValue = sineValue >> (8 - knob3Rotation);
+//   analogWrite(OUTR_PIN, sineValue);
+// }
 
 // Create chords by summing the currentstepsize of each key 
 uint32_t chords(std::string keyStr, int OCTAVE){
@@ -255,7 +239,6 @@ uint32_t chords(std::string keyStr, int OCTAVE){
       else{
         localCurrentStepSize = localCurrentStepSize << (OCTAVE - 4);
       }
-      
       sum += localCurrentStepSize;
     }
   }
@@ -265,6 +248,7 @@ uint32_t chords(std::string keyStr, int OCTAVE){
   return sum;
 }
 
+// Function to count number of zeros (number of keys pressed)
 uint32_t countZero(std::string keyStr){
   int zeroCount = 0;
   for (int i = 0; i < 12; i++){
@@ -278,7 +262,7 @@ uint32_t countZero(std::string keyStr){
 // Everything that's relevant to scanning the Keys
 void scanKeysTask(void * pvParameters){
   Serial.println("SCAN");
-  const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint8_t TX_Message[8] = {0};
   while(1){
@@ -294,62 +278,39 @@ void scanKeysTask(void * pvParameters){
       std::bitset<4> keyBits(keys);
       std::string keyString = keyBits.to_string();
       keyStrArray[row] = keyString;
-      keyArray[row] = keys;
     }
     keyStr = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2] + keyStrArray[3];
     
-    // int zeroCount = 0;
-    // uint32_t sum = 0;
-    // for (int i = 0; i < 12; i++){
-    //   if (keyStr[i] == '0'){
-    //     zeroCount++;
-    //     localCurrentStepSizeT = stepSizes[i];
-    //     localCurrentStepSizeT = localCurrentStepSizeT << (OCTAVE - 4);
-    //     sum += localCurrentStepSizeT;
-    //   }
-    // }
-    // if (zeroCount != 0){
-    //   sum /= zeroCount;
-    // }
-    
-    // currentStepSize = localCurrentStepSizeT;
-  // this was checkeypress
-  // uint8_t TX_Message[8];
-
-  if (!master){
-    TX_Message[1] = OCTAVE ;
-    for (int row = 0; row < NUM_ROWS-1 ; row++){
-      for (int col = 0; col < 5; col++){
-        if (keyStrArray[row][col] != prevKeyArray[row][col]){
-          if (prevKeyArray[row][col] == '1'){
-            TX_Message[0] = 80;
+    if (!master){
+      TX_Message[1] = OCTAVE ;
+      for (int row = 0; row < NUM_ROWS-1 ; row++){
+        for (int col = 0; col < 5; col++){
+          if (keyStrArray[row][col] != prevKeyArray[row][col]){
+            if (prevKeyArray[row][col] == '1'){
+              TX_Message[0] = 80;
+            }
+            else if (prevKeyArray[row][col] == '0'){
+              TX_Message[0] = 82;
+            }
+            TX_Message[2] = row*4 + col;
           }
-          else if (prevKeyArray[row][col] == '0'){
-            TX_Message[0] = 82;
-          }
-          TX_Message[2] = row*4 + col;
         }
       }
+      std::string lo_str = keyStr.substr(0, 6);  // bit 0 to bit 5
+      std::string hi_str = keyStr.substr(6, 6);   // bit 6 to bit 11
+      int lo_val = stoi(lo_str, nullptr, 2);
+      int hi_val = stoi(hi_str, nullptr, 2);
+      TX_Message[3] = lo_val;
+      TX_Message[4] = hi_val;
     }
-    std::string lo_str = keyStr.substr(0, 6);  // bit 0 to bit 5
-    std::string hi_str = keyStr.substr(6, 6);   // bit 6 to bit 11
-    int lo_val = stoi(lo_str, nullptr, 2);
-    int hi_val = stoi(hi_str, nullptr, 2);
-    TX_Message[3] = lo_val;
-    TX_Message[4] = hi_val;
-  }
   
   if (master){
-    // Serial.println("MASTER");
     xSemaphoreTake(RXMutex, portMAX_DELAY);
-    // for (int i = 0; i < 4; i++){
       // detect press messages
     if (RX_Message[0] == 80){
-      // Serial.println("Pressed");
       localCurrentStepSizeR = stepSizes[RX_Message[2]];
       localCurrentStepSizeR = localCurrentStepSizeR << (RX_Message[1] - 4);
     }
-    // }
     std::bitset<6> binaryHigh(RX_Message[3]);
     std::string binaryHighStr = binaryHigh.to_string();
     std::bitset<6> binaryLow(RX_Message[4]);
@@ -372,7 +333,6 @@ void scanKeysTask(void * pvParameters){
     __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
 
-
   std::copy(keyStrArray, keyStrArray + sizeof(keyStrArray)/sizeof(keyStrArray[0]), prevKeyArray);
   
   if (!master){
@@ -382,37 +342,24 @@ void scanKeysTask(void * pvParameters){
   decodeKnob3();
   decodeKnob2();
     
-    // std::string currentKnob3 = keyStrArray[3].substr(0, 2); 
-    // Serial.println(keyStrArray[3].substr(0,2).c_str());
-    // Serial.println(knob3Rotation);
-    // __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
 }
 
 // Display it on the screen
 void displayUpdateTask(void *  pvParameters){
   // Serial.println("DISPLAY");
-  const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint32_t ID = 0x123;
 
   while(1){
-    // Serial.println("DISPLAY");
     vTaskDelayUntil( &xLastWakeTime, xFrequency);
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-    // u8g2.drawStr(2,10,"Hello World!"); // write something to the internal memory
     
     u8g2.drawStr(2,10, keyStr.c_str());
     u8g2.drawStr(2,20, RX_keyStr.c_str());
     
-    // u8g2.setCursor(2,20);
-    // xSemaphoreTake(RXMutex, portMAX_DELAY);
-    // u8g2.print((char) RX_Message[0]);
-    // u8g2.print(RX_Message[1]);
-    // u8g2.print(RX_Message[2]);
-    // xSemaphoreGive(RXMutex);
-     // u8g2.setCursor(2,40);
     std::string vol = "Vol: " + std::to_string(knob3Rotation);
     u8g2.drawStr(66,30, vol.c_str());
     std::string octave = "Octave: " + std::to_string(OCTAVE);
@@ -433,13 +380,8 @@ void decodeTask(void *  pvParameters){
   while (1){
     xSemaphoreTake(RXMutex, portMAX_DELAY);
     xQueueReceive(msgInQ, Local_RX_Message, portMAX_DELAY);
-    // Serial.print("Local:");
-    // Serial.println(Local_RX_Message[1]);
     memcpy(RX_Message, Local_RX_Message, sizeof(RX_Message));
-    // mem(RX_Message, RX_Message + sizeof(RX_Message)/sizeof(RX_Message), Local_RX_Message);
     xSemaphoreGive(RXMutex);
-    // Serial.print("Global: ");
-    // Serial.println(RX_Message[1]);
   
   }  
 }
@@ -507,7 +449,6 @@ void setup() {
 
   //Initialise UART
   Serial.begin(9600);
-  // Serial.println("Hello World");
   sine_LUT();
 
   TIM_TypeDef *Instance = TIM1;
@@ -556,15 +497,8 @@ void setup() {
     1,			/* Task priority */
     &CAN_TXHandle );  /* Pointer to store the task handle */
 
-  
-
-
-  
   vTaskStartScheduler();
 }
 
 void loop() {
-    // Serial.println(RX_Message[3]);
-    // Serial.println(finall.c_str());
-
 }
