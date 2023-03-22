@@ -54,6 +54,7 @@ volatile int rotationVar = 0;
 volatile int octaveVar = 0;
 volatile int volVar = 0;
 volatile int octVar = 0;
+volatile int waveVar = 0;
 std::string prevKnob3 = "00";
 std::string prevKnob2 = "00";
 int knob3Rotation = 0;
@@ -65,9 +66,9 @@ std::string prevKeyArray[7] = {"1111", "1111", "1111", "1111", "1111", "1111", "
 int OCTAVE = 4;
 uint8_t GLOBAL_RX_Message[8]={0};
 std::string keyStr = "0000";
-bool master = false;
+bool master = true;
 std::string RX_keyStr = "0000";
-
+uint32_t globalphaseAcc[12] = {0};
 // volatile uint32_t localCurrentStepSize;
 
 const std::string keyValues[NUM_ROWS][4] = {
@@ -170,8 +171,8 @@ class Knob {
           clip(knobRotation, 8, 0);
         }
       }
-      else if (knobId == 1){
-        clip(knobRotation, 1, 0);
+      else if ((knobId == 1)||(knobId == 0)){
+        clip(knobRotation, 2, 0);
         // master = bool(knobRotation);
       }
       else{
@@ -183,67 +184,7 @@ class Knob {
 
 Knob knob3(3);
 Knob knob2(2);
-
-
-
-
-// Decode the rightest Knob
-void decodeKnob3(){
-  std::string currentKnob3 = keyStrArray[3].substr(0, 2); 
-  //Serial.println(keyStrArray[3]);
-  if (prevKnob3 == "00" && currentKnob3 == "01"){
-    rotationVar = -1;
-  }
-  else if (prevKnob3 == "01" && currentKnob3 == "00"){
-    rotationVar = 1;
-  }
-  else if (prevKnob3 == "10" && currentKnob3 == "11"){
-    rotationVar = 1;
-  }
-  else if (prevKnob3 == "11" && currentKnob3 == "10"){
-    rotationVar = -1;
-  }
-  else{
-    rotationVar = 0;
-  }
-  knob3Rotation += rotationVar;
-  if (knob3Rotation > 8){
-    knob3Rotation = 8;
-  }
-  else if (knob3Rotation < 0){
-    knob3Rotation = 0;
-  }
-  prevKnob3 = currentKnob3;
-}
-
-// Decode the rightest Knob
-void decodeKnob2(){
-  std::string currentKnob2 = keyStrArray[3].substr(2, 4); 
-  if (prevKnob2 == "00" && currentKnob2 == "01"){
-    octaveVar = -1;
-  }
-  else if (prevKnob2 == "01" && currentKnob2 == "00"){
-    octaveVar = 1;
-  }
-  else if (prevKnob2 == "10" && currentKnob2 == "11"){
-    octaveVar = 1;
-  }
-  else if (prevKnob2 == "11" && currentKnob2 == "10"){
-    octaveVar = -1;
-  }
-  else{
-    octaveVar = 0;
-  }
-  knob2Rotation += octaveVar;
-  if (knob2Rotation > 8){
-    knob2Rotation = 8;
-  }
-  else if (knob2Rotation < 0){
-    knob2Rotation = 0;
-  }
-  OCTAVE = knob2Rotation;
-  prevKnob2 = currentKnob2;
-}
+Knob knob0(0);
 
 const uint32_t stepSizes [] = {
       51076922, //C4
@@ -271,13 +212,68 @@ void sine_LUT() {
   }
 }
 
-// Sawtooth wave
+class Waves {
+  private:
+  public:
+  
+  int32_t get_sine(uint32_t phaseAcc){
+    uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
+    int32_t sineValue = LUT[index];
+    if (volVar==8){
+      sineValue = sineValue << 1;
+    }
+    else{
+      sineValue = sineValue >> (8 - (volVar+1));
+    }
+    return sineValue;
+  }
+  int32_t get_sawtooth(uint32_t phaseAcc){
+    int32_t Vout = (phaseAcc >> 24) - 128;
+    Vout = Vout >> (8 - volVar);
+    Vout = Vout + 128;
+    return Vout;
+  }
+  int32_t test_wave(){
+    int32_t Vout = 0;
+    int32_t Vfin = 0;
+    // static uint32_t phaseAcc[12] = {0};
+    for (int i = 0; i < 12; i++){
+      Vout = (globalphaseAcc[i] >>24) -128;
+      Vout = Vout >> (8 - volVar);
+      Vfin += Vout;
+    }
+    return Vfin;
+  }
+
+};
+
+Waves wave;
+
+ 
+// Sawtooth wave original
+// void sampleISR() {
+//   static uint32_t phaseAcc = 0;
+//   phaseAcc += currentStepSize;
+//   int32_t Vout = (phaseAcc >> 24) - 128;
+//   Vout = Vout >> (8 - volVar);
+//   analogWrite(OUTR_PIN, (Vout + 128));
+// }
+
+// Handles multiple_waves
 void sampleISR() {
   static uint32_t phaseAcc = 0;
+  int32_t Vout;
   phaseAcc += currentStepSize;
-  int32_t Vout = (phaseAcc >> 24) - 128;
-  Vout = Vout >> (8 - volVar);
-  analogWrite(OUTR_PIN, (Vout + 128));
+  if (waveVar==0){
+    Vout = wave.get_sawtooth(phaseAcc);
+  }
+  else if (waveVar==1){
+    Vout = wave.get_sine(phaseAcc);
+  }
+  else if (waveVar==2){
+    Vout = wave.test_wave();
+  }
+  analogWrite(OUTR_PIN, Vout);
 }
 
 // //Sine wave
@@ -286,16 +282,19 @@ void sampleISR() {
 //   phaseAcc += currentStepSize;
 //   uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size
 //   int32_t sineValue = LUT[index];
-//   sineValue = sineValue >> (8 - knob3Rotation);
+//   sineValue = sineValue >> (8 - volVar);
 //   analogWrite(OUTR_PIN, sineValue);
 // }
 
 // Create chords by summing the currentstepsize of each key 
 uint32_t chords(std::string keyStr, int OCTAVE){
   int zeroCount = 0;
+  
   uint32_t sum = 0;
   uint32_t localCurrentStepSize = 0;
+  
   for (int i = 0; i < 12; i++){
+    globalphaseAcc[i] = 0;
     if (keyStr[i] == '0'){
       zeroCount++;
       localCurrentStepSize = stepSizes[i];
@@ -306,6 +305,7 @@ uint32_t chords(std::string keyStr, int OCTAVE){
         localCurrentStepSize = localCurrentStepSize << (OCTAVE - 4);
       }
       sum += localCurrentStepSize;
+      globalphaseAcc[i] += localCurrentStepSize;
     }
   }
   // if (zeroCount != 0){
@@ -407,6 +407,8 @@ void scanKeysTask(void * pvParameters){
     volVar = knob3.knobRotation;
     knob2.decodeKnob(keyStrArray[3].substr(2, 4));
     OCTAVE = knob2.knobRotation;
+    knob0.decodeKnob(keyStrArray[4].substr(2, 4));
+    waveVar = knob0.knobRotation;
   }
 }
 
@@ -425,10 +427,17 @@ void displayUpdateTask(void *  pvParameters){
     u8g2.drawStr(2,10, keyStr.c_str());
     u8g2.drawStr(2,20, RX_keyStr.c_str());
     
+    
+    
+    
+    std::string wave = "Wav: " + std::to_string(waveVar);
+    u8g2.drawStr(2,30, wave.c_str());
+
+    std::string octave = "Oct: " + std::to_string(OCTAVE);
+    u8g2.drawStr(40,30, octave.c_str());
+
     std::string vol = "Vol: " + std::to_string(volVar);
-    u8g2.drawStr(66,30, vol.c_str());
-    std::string octave = "Octave: " + std::to_string(OCTAVE);
-    u8g2.drawStr(2,30, octave.c_str());
+    u8g2.drawStr(70,30, vol.c_str());
 
 
     u8g2.sendBuffer();
@@ -566,7 +575,7 @@ void setup() {
 }
 
 void loop() {
-  Serial.print(octVar);
-  Serial.println(volVar);
+  // Serial.print(octVar);
+  // Serial.println(volVar);
 
 }
