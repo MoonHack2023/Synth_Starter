@@ -331,7 +331,7 @@ uint32_t countZero(std::string keyStr){
 void scanKeysTask(void * pvParameters){
   decodeKnob1();
   Serial.println("SCAN");
-  const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint8_t TX_Message[8] = {0};
   while(1){
@@ -423,7 +423,7 @@ void scanKeysTask(void * pvParameters){
 // Display it on the screen
 void displayUpdateTask(void *  pvParameters){
   Serial.println("DISPLAY");
-  const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint32_t ID = 0x123;
 
