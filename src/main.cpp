@@ -87,9 +87,9 @@ const std::string keyValues[NUM_ROWS][4] = {
   {"0111", "1011", "1101", "1110"}
 };
 const std::string noteNames[12] = {
-  "C4", "C#4", "D4", "D#4",
-  "E4", "F4", "F#4", "G4",
-  "G#4", "A4", "A#4", "B4"
+  "C", "C#", "D", "D#",
+  "E", "F", "F#", "G",
+  "G#", "A", "A#", "B"
 };
 
 
@@ -343,11 +343,6 @@ void sampleISR() {
   analogWrite(OUTR_PIN, Vout);
 }
 
-
-
-
-
-
 // Create chords by summing the currentstepsize of each key 
 uint32_t chords(std::string keyStr, int OCTAVE){
   int zeroCount = 0;
@@ -404,28 +399,37 @@ void scanKeysTask(void * pvParameters){
     }
     keyStr = keyStrArray[0]+ keyStrArray[1] + keyStrArray[2] + keyStrArray[3];
 
-  if (!master){
-    TX_Message[1] = OCTAVE ;
-    for (int row = 0; row < NUM_ROWS-1 ; row++){
-      for (int col = 0; col < 5; col++){
-        if (keyStrArray[row][col] != prevKeyArray[row][col]){
-          if (prevKeyArray[row][col] == '1'){
-            TX_Message[0] = 80;
+    if (keyStrArray[5][3] == '1' ){ // left most or solo
+      master = true;
+      // Serial.println("MASTER");
+    }
+    else{
+      master = false;
+      // Serial.println("Slave");
+    }
+
+    if (!master){
+      TX_Message[1] = OCTAVE ;
+      for (int row = 0; row < NUM_ROWS-1 ; row++){
+        for (int col = 0; col < 5; col++){
+          if (keyStrArray[row][col] != prevKeyArray[row][col]){
+            if (prevKeyArray[row][col] == '1'){
+              TX_Message[0] = 80;
+            }
+            else if (prevKeyArray[row][col] == '0'){
+              TX_Message[0] = 82;
+            }
+            TX_Message[2] = row*4 + col;
           }
-          else if (prevKeyArray[row][col] == '0'){
-            TX_Message[0] = 82;
-          }
-          TX_Message[2] = row*4 + col;
         }
       }
+      std::string lo_str = keyStr.substr(0, 6);  // bit 0 to bit 5
+      std::string hi_str = keyStr.substr(6, 6);   // bit 6 to bit 11
+      int lo_val = stoi(lo_str, nullptr, 2);
+      int hi_val = stoi(hi_str, nullptr, 2);
+      TX_Message[3] = lo_val;
+      TX_Message[4] = hi_val;
     }
-    std::string lo_str = keyStr.substr(0, 6);  // bit 0 to bit 5
-    std::string hi_str = keyStr.substr(6, 6);   // bit 6 to bit 11
-    int lo_val = stoi(lo_str, nullptr, 2);
-    int hi_val = stoi(hi_str, nullptr, 2);
-    TX_Message[3] = lo_val;
-    TX_Message[4] = hi_val;
-  }
   
   if (master){
     uint32_t sumMaster = chords(keyStr,OCTAVE);
@@ -465,7 +469,7 @@ void scanKeysTask(void * pvParameters){
   }
 
   
-  knob3.decodeKnob(keyStrArray[3].substr(0, 2)); // MASTER KNOB
+  // knob3.decodeKnob(keyStrArray[3].substr(0, 2)); // MASTER KNOB
  
   knob2.decodeKnob(keyStrArray[3].substr(2, 4)); // VOLUME KNOB
   volVar = knob2.knobRotation;
