@@ -2,6 +2,7 @@
 
 ## Group MoonHack - Music synthesiser
 
+* If there are issues with displays or the keyboard becomes frozen, please reset the board by pressing the yellow button
 This document contains the project documentation, following the specifications required for the report. The contents are structured as follows:
 
 ## Table of Contents
