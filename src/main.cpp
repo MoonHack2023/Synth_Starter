@@ -460,17 +460,34 @@ std::string convertNote(std::string keysStr){
   return ans;
 }
 
+std::string ks;
+std::string rs;
+
 // Display it on the screen
 void displayUpdateTask(void *  pvParameters){
-  Serial.println("DISPLAY");
-  const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 200/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint32_t ID = 0x123;
+
+    ks = "Keys:";
+    rs = "";
+    for (int i = 0; i < keyStr.length(); i++){
+      if (keyStr[i] == '0'){
+        ks += noteNames[i];
+      }
+      else if (RX_keyStr[i] == '0'){
+        rs += noteNames[i];
+      }
+    }
+
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-    
-    u8g2.drawStr(2,10, convertNote(keyStr).c_str());
-    u8g2.drawStr(2,20, convertNote(RX_keyStr).c_str());
+
+    if(master){
+      u8g2.drawStr(2,10, ks.c_str());
+      u8g2.drawStr(2,20, rs.c_str());
+    }
+
     std::string wave = "Wav: " + std::to_string(waveVar);
     u8g2.drawStr(2,30, wave.c_str());
     std::string octave = "Oct: " + std::to_string(OCTAVE);
@@ -479,11 +496,12 @@ void displayUpdateTask(void *  pvParameters){
     u8g2.drawStr(70,30, vol.c_str());
     u8g2.drawStr(115,30, master ? "M": "S");
     u8g2.sendBuffer();
-    
+  
 }
 
+
 void decodeTask(void *  pvParameters){
-  Serial.println("DECODE");
+
   uint32_t ID = 0x123;
   uint32_t localCurrentStepSize;
   uint8_t Local_RX_Message[8];
