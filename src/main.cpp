@@ -274,6 +274,7 @@ class Waves {
   public:
   int32_t get_sine(uint32_t phaseAcc){
   const char* tempkeyVal = keyStr.c_str();
+  const char* tempRXkeyVal = RX_keyStr.c_str() ;
   uint32_t Vout_zeroCount = 0;
   uint32_t index = 0;
   int32_t localOct = OCTAVE;
@@ -294,6 +295,24 @@ class Waves {
       }
     }
   }
+
+  for (int i = 0; i < 12; i++){
+    if (tempRXkeyVal[i] == '0'){
+      if (localOct < 4){
+        index = ((((stepSizes[i] >> -(OCTAVE+1-4)))*phaseAcc) >> 22)% 360;
+      }
+      else {
+        index = ((((stepSizes[i] << (OCTAVE+1-4)))*phaseAcc) >> 22)% 360;
+      }
+      if (index > 180){
+        Vout_zeroCount += -LUT[(index - 180) >> 1];
+      }
+      else {
+        Vout_zeroCount += LUT[(index) >> 1];
+      }
+    }
+  }
+
   uint32_t Vout = Vout_zeroCount >> (34-volVar);
   return Vout;
   }
