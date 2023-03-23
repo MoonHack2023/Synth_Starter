@@ -23,7 +23,7 @@ We have created classes for knobs and Waves to simplify code organization, impro
 
 - **Knobs**:
 
-  We created the **Knob** class to enhance code efficiency by encapsulating knob-related data and behavior into a single, reusable object. The class has private and public members, including the knob ID, previous knob state, and rotation value. It provides constructors for initializing a knob with or without a starting rotation value, a method to print the current rotation, and a decodeKnob method for processing the current knob state. 
+  We created the Knobs class to enhance code efficiency by encapsulating knob-related data and behavior into a single, reusable object. The class has private and public members, including the knob ID, previous knob state, and rotation value. It provides constructors for initializing a knob with or without a starting rotation value, a method to print the current rotation, and a decodeKnob method for processing the current knob state. 
 
 
 - **Waves**:
@@ -148,9 +148,9 @@ Pursuing the concept of maintainable code, we have employed distinct threads for
 
   The chord feature is incorporated into the sinewave implementation by adjusting the get_sine() function. The function processes both local and remote key presses (tempkeyVal and tempRXkeyVal) in separate loops, adding their respective sine values to the output Vout_zeroCount. This allows the creation of chords by combining the sinewave output of multiple key presses. The final output (Vout) is computed by scaling the Vout_zeroCount according to the volume variable (volVar).
 
-- **All the sound is played in one speaker**
+- **All the sound is played in one speaker** 
 
-  One of the keyboards acts as the `master` of the whole system. The other keyboards act as its `slaves` and transmit messages to the `master` to operate, which means that all the notes that are supposed to be played in the `slave` keyboard ended up playing through the `master` keyboard. RX_Message recevied by the `master` includes the corresponding keyStrArray for the transmitting keyboard (slave).
+  One of the keyboards acts as the `master` of the whole system. The other keyboards act as its `slave` and transmit messages to the `master` to operate, which means that all the notes that are supposed to be played in the `slave` keyboard ended up playing through the `master` keyboard. RX_Message recevied by the `master` includes the corresponding keyStrArray for the transmitting keyboard (`slave`).
 
 - **Auto Detection of master and slave**
 
@@ -167,16 +167,22 @@ Similarly for the decode task, it also governed by a 36-item queue. The minimum 
 
 | Threads                   | Priority  | Initiation Time (ms) | Execution Time (μs) | $$(\frac{\tau_n}{\tau_i}) \cdot T_i$$ (ms) | CPU Utilization (%) |
 |---------------------------|-----------|----------------------|---------------------|--------------------------------------------|---------------------|
-| scanKeyTask               |         4 |                   20 |              249.09 |                                      0.747 |                1.25 |
-| displayUpdateTask         |         3 |                   50 |            16097.75 |                                       19.3 |                32.2 |
+| scanKeyTask               |         4 |                   50 |              249.09 |                                      0.747 |                1.25 |
+| displayUpdateTask         |         3 |                   200 |            16097.75 |                                       19.3 |                32.2 |
 | decodeTask                |         2 |                 25.2 |                 9.5 |                                      0.023 |               0.038 |
 | CAN_TX_Task               |         1 |     60 (for 36 exec) |               12.25 |                                       12.3 |               0.020 |
 | sampleISR (Sine Wave)     | Interrupt |                0.045 |                9.09 |                                       12.1 |                20.2 |
 | sampleISR (Sawtooth Wave) | Interrupt |                0.045 |                9.16 |                                       12.2 |                20.4 |
 | Total                     |           |                      |                     |                                      56.67 |                74.3 |
 
-The total latency is 56.67 ms which is less than the initiation time of the task with lowest priority.
+The total latency is 56.67 ms which is less than the initiation time of the task with lowest priority, this is . The CPU utilization is also below 100% which is ideal for the keyboard to function properly.
 
 
 
 ## Critical instant analysis 
+
+Figure 1 displays the outcome of our critical instant analysis. The illustration emphasizes the sequence of thread execution according to their priorities, demonstrating how all deadlines are satisfied within the given time frame. Despite running all threads, there remains a time buffer before the commencement of the next thread instance, even under the most challenging conditions.
+
+![Critical_Instant_Analysis](/doc/Critical_Instant_Analysis.png)
+|:--:|
+| <b>Fig.1 - Timeline of Tasks (not drawn to scale) </b>|

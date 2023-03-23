@@ -59,15 +59,8 @@ volatile int masVar = 0;
 volatile int volVar = 5;
 volatile int octVar = 0;
 volatile int waveVar = 0;
-
-// std::string prevKnob1 = "00";
-
-
-// int knob1Rotation = 0;
-
-
-
-
+std::string rs = "";
+std::string ks = "";
 
 QueueHandle_t msgInQ;
 uint8_t RX_Message[8]={1};
@@ -79,8 +72,6 @@ std::string keyStr = "0000";
 volatile bool master = true;
 std::string RX_keyStr = "111111111111";
 
-// volatile uint32_t localCurrentStepSize;
-
 const std::string keyValues[NUM_ROWS][4] = {
   {"0111", "1011", "1101", "1110"},
   {"0111", "1011", "1101", "1110"},
@@ -91,7 +82,6 @@ const std::string noteNames[12] = {
   "E", "F", "F#", "G",
   "G#", "A", "A#", "B"
 };
-
 
 //Function to set outputs using key matrix
 void setOutMuxBit(const uint8_t bitIdx, const bool value) {
@@ -117,14 +107,12 @@ void setOutMuxBit(const uint8_t bitIdx, const bool value) {
 
   //Function to read the inputs from the four columns of the switch matrix (C0,1,2,3) and return the four bits concatenated together as a single byte
   uint8_t readCols(){
-
-  int c0state = digitalRead(C0_PIN);
-  int c1state = digitalRead(C1_PIN);
-  int c2state = digitalRead(C2_PIN);
-  int c3state = digitalRead(C3_PIN);
-
-  // Call the concatenateBits() function with the read states
-  uint8_t cols = concatenateBits(c0state, c1state, c2state, c3state);
+    int c0state = digitalRead(C0_PIN);
+    int c1state = digitalRead(C1_PIN);
+    int c2state = digitalRead(C2_PIN);
+    int c3state = digitalRead(C3_PIN);
+    // Call the concatenateBits() function with the read states
+    uint8_t cols = concatenateBits(c0state, c1state, c2state, c3state);
   return cols;
 }
 
@@ -192,7 +180,6 @@ class Knob {
       }
       else if ((knobId == 0)){   // WAVE KNOB
         clip(knobRotation, 1, 0);
-        // master = bool(knobRotation);
       }
       else{
         clip(knobRotation, 8, 0);
@@ -204,8 +191,6 @@ class Knob {
           else if (knobRotation < 0){
             knobRotation = 0;
           }
-          // Serial.println("IN DECODE CLASS");
-          
           if (knobRotation == 1){
             master = true;
           }
@@ -222,7 +207,6 @@ Knob knob2(2,5);   // VOLUME KNOB
 Knob knob1(1);   // OCTAVE KNOB
 Knob knob0(0);   // WAVE KNOB
 
-
 const uint32_t stepSizes [] = {
       51076922, //C4
       54112683, //C#4
@@ -238,25 +222,6 @@ const uint32_t stepSizes [] = {
       96426316, //B4
 };
 
-
-// // Sawtooth wave
-// void sampleISR() {
-//   static uint32_t phaseAcc = 0;
-//   phaseAcc += currentStepSize;
-//   int32_t Vout = (phaseAcc >> 24) - 128;
-//   Vout = Vout >> (8 - knob3Rotation);
-//   analogWrite(OUTR_PIN, (Vout + 128));
-// }
-
-//Sine wave
-// void sampleISR() {
-//   static uint32_t phaseAcc = 0;
-//   phaseAcc += currentStepSize;
-//   uint32_t index = phaseAcc >> 22; // scale the phase accumulator to fit the lookup table size (2024 = 2^10)
-//   int32_t sineValue = LUT[index];
-//   sineValue = sineValue >> (8 - volVar);
-//   analogWrite(OUTR_PIN, sineValue);
-// }
 
 const int LUT_SIZE = 128;
 int32_t LUT[LUT_SIZE];
@@ -467,9 +432,6 @@ void scanKeysTask(void * pvParameters){
   if (!master){
     xQueueSend( msgOutQ, TX_Message, portMAX_DELAY);
   }
-
-  
-  // knob3.decodeKnob(keyStrArray[3].substr(0, 2)); // MASTER KNOB
  
   knob2.decodeKnob(keyStrArray[3].substr(2, 4)); // VOLUME KNOB
   volVar = knob2.knobRotation;
@@ -480,32 +442,33 @@ void scanKeysTask(void * pvParameters){
   }
 }
 
-// std::string convertNote(std::string )
-std::string convertNote(std::string keysStr){
-  std::string ans = "";
-  for (int i = 0; i < keysStr.length(); i++){
-    if (keysStr[i] == '0'){
-      ans += noteNames[i];
-    }
-  }
-  return ans;
-}
-
-
 // Display it on the screen
 void displayUpdateTask(void *  pvParameters){
-  Serial.println("DISPLAY");
-  const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 200/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint32_t ID = 0x123;
 
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency);
+    ks = "Keys:";
+    rs = "";
+    for (int i = 0; i < keyStr.length(); i++){
+      if (keyStr[i] == '0'){
+        ks += noteNames[i];
+      }
+      else if (RX_keyStr[i] == '0'){
+        rs += noteNames[i];
+      }
+    }
+
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-    
-    u8g2.drawStr(2,10, convertNote(keyStr).c_str());
-    u8g2.drawStr(2,20, convertNote(RX_keyStr).c_str());
+
+    if(master){
+      u8g2.drawStr(2,10, ks.c_str());
+      u8g2.drawStr(2,20, rs.c_str());
+    }
+
     std::string wave = "Wav: " + std::to_string(waveVar);
     u8g2.drawStr(2,30, wave.c_str());
     std::string octave = "Oct: " + std::to_string(OCTAVE);
@@ -514,7 +477,6 @@ void displayUpdateTask(void *  pvParameters){
     u8g2.drawStr(70,30, vol.c_str());
     u8g2.drawStr(115,30, master ? "M": "S");
     u8g2.sendBuffer();
-    
   }  
 }
 
@@ -525,14 +487,12 @@ void decodeTask(void *  pvParameters){
   uint8_t Local_RX_Message[8];
   while (1){
     xSemaphoreTake(RXMutex, portMAX_DELAY);
-
     if (keyStrArray[5][3] == '0' || keyStrArray[6][3] == '0' ){
       // Serial.println("515");
       xQueueReceive(msgInQ, Local_RX_Message, portMAX_DELAY);
       memcpy(RX_Message, Local_RX_Message, sizeof(RX_Message));
     }
     xSemaphoreGive(RXMutex);
-
   }  
 }
 
@@ -647,5 +607,4 @@ void setup() {
 }
 
 void loop() {
-
 }
