@@ -121,4 +121,12 @@ Pursuing the concept of maintainable code, we have employed distinct threads for
 
 ## Shared Data Structures and Synchronization
 ## Timing Analysis
+
+| Thread      | Time     | Interrupts | Time |
+|-------------|----------|------------|------|
+| ScanKey     | 249.09   |            |      |
+| DisplayMon  | 16097.75 |            |      |
+| DecodeTask  | 9.5      |            |      |
+| CAN_TX_Task | 12.25    |            |      |
+
 ### CPU Utilisation
