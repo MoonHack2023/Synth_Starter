@@ -70,14 +70,14 @@ volatile int waveVar = 0;
 
 
 QueueHandle_t msgInQ;
-uint8_t RX_Message[8]={0};
+uint8_t RX_Message[8]={1};
 QueueHandle_t msgOutQ;
 std::string prevKeyArray[7] = {"1111", "1111", "1111", "1111", "1111", "1111", "1111"};
 int OCTAVE = 4;
-uint8_t GLOBAL_RX_Message[8]={0};
+uint8_t GLOBAL_RX_Message[8]={1};
 std::string keyStr = "0000";
 volatile bool master = true;
-std::string RX_keyStr = "0000";
+std::string RX_keyStr = "111111111111";
 
 // volatile uint32_t localCurrentStepSize;
 
@@ -86,10 +86,10 @@ const std::string keyValues[NUM_ROWS][4] = {
   {"0111", "1011", "1101", "1110"},
   {"0111", "1011", "1101", "1110"}
 };
-const std::string noteNames[NUM_ROWS][4] = {
-  {"C4", "C#4", "D4", "D#4"},
-  {"E4", "F4", "F#4", "G4"},
-  {"G#4", "A4", "A#4", "B4"}
+const std::string noteNames[12] = {
+  "C4", "C#4", "D4", "D#4",
+  "E4", "F4", "F#4", "G4",
+  "G#4", "A4", "A#4", "B4"
 };
 
 
@@ -217,7 +217,7 @@ class Knob {
     }
 };
 
-Knob knob3(3);   // MASTER KNOB
+Knob knob3(3,0);   // MASTER KNOB
 Knob knob2(2,5);   // VOLUME KNOB
 Knob knob1(1);   // OCTAVE KNOB
 Knob knob0(0);   // WAVE KNOB
@@ -273,6 +273,7 @@ void sine_LUT() {
 class Waves {
   private:
   public:
+
   int32_t get_sine(uint32_t phaseAcc){
   const char* tempkeyVal = keyStr.c_str();
   const char* tempRXkeyVal = RX_keyStr.c_str() ;
@@ -427,22 +428,25 @@ void scanKeysTask(void * pvParameters){
   }
   
   if (master){
-    xSemaphoreTake(RXMutex, portMAX_DELAY);
-      // detect press messages
-    if (RX_Message[0] == 80){
-      localCurrentStepSizeR = stepSizes[RX_Message[2]];
-      localCurrentStepSizeR = localCurrentStepSizeR << (RX_Message[1] - 4);
-    }
-    std::bitset<6> binaryHigh(RX_Message[3]);
-    std::string binaryHighStr = binaryHigh.to_string();
-    std::bitset<6> binaryLow(RX_Message[4]);
-    std::string binaryLowStr = binaryLow.to_string();
-    RX_keyStr = binaryHighStr + binaryLowStr;
-    
-    xSemaphoreGive(RXMutex);
-    
     uint32_t sumMaster = chords(keyStr,OCTAVE);
-    uint32_t sumSlave = chords(RX_keyStr,RX_Message[1]);
+    uint32_t sumSlave = 0;
+    if (keyStrArray[5][3] == '0' || keyStrArray[6][3] == '0' ){
+      // Serial.println("43");
+      xSemaphoreTake(RXMutex, portMAX_DELAY);
+      // detect press messages
+      if (RX_Message[0] == 80){
+        localCurrentStepSizeR = stepSizes[RX_Message[2]];
+        localCurrentStepSizeR = localCurrentStepSizeR << (RX_Message[1] - 4);
+      }
+      std::bitset<6> binaryHigh(RX_Message[3]);
+      std::string binaryHighStr = binaryHigh.to_string();
+      std::bitset<6> binaryLow(RX_Message[4]);
+      std::string binaryLowStr = binaryLow.to_string();
+      RX_keyStr = binaryHighStr + binaryLowStr;
+      
+      xSemaphoreGive(RXMutex);
+      sumSlave = chords(RX_keyStr,RX_Message[1]);
+    }
 
     if (localCurrentStepSize != 0) {
       localCurrentStepSize = (sumSlave +  sumMaster) / (countZero(RX_keyStr) + countZero(keyStr));
@@ -469,9 +473,20 @@ void scanKeysTask(void * pvParameters){
   waveVar = knob0.knobRotation;
   knob1.decodeKnob(keyStrArray[4].substr(0, 2)); // OCTAVE KNOB
   OCTAVE = knob1.knobRotation; 
-  
   }
 }
+
+// std::string convertNote(std::string )
+std::string convertNote(std::string keysStr){
+  std::string ans = "";
+  for (int i = 0; i < keysStr.length(); i++){
+    if (keysStr[i] == '0'){
+      ans += noteNames[i];
+    }
+  }
+  return ans;
+}
+
 
 // Display it on the screen
 void displayUpdateTask(void *  pvParameters){
@@ -485,8 +500,8 @@ void displayUpdateTask(void *  pvParameters){
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
     
-    u8g2.drawStr(2,10, keyStr.c_str());
-    u8g2.drawStr(2,20, RX_keyStr.c_str());
+    u8g2.drawStr(2,10, convertNote(keyStr).c_str());
+    u8g2.drawStr(2,20, convertNote(RX_keyStr).c_str());
     std::string wave = "Wav: " + std::to_string(waveVar);
     u8g2.drawStr(2,30, wave.c_str());
     std::string octave = "Oct: " + std::to_string(OCTAVE);
@@ -506,10 +521,14 @@ void decodeTask(void *  pvParameters){
   uint8_t Local_RX_Message[8];
   while (1){
     xSemaphoreTake(RXMutex, portMAX_DELAY);
-    xQueueReceive(msgInQ, Local_RX_Message, portMAX_DELAY);
-    memcpy(RX_Message, Local_RX_Message, sizeof(RX_Message));
+
+    if (keyStrArray[5][3] == '0' || keyStrArray[6][3] == '0' ){
+      // Serial.println("515");
+      xQueueReceive(msgInQ, Local_RX_Message, portMAX_DELAY);
+      memcpy(RX_Message, Local_RX_Message, sizeof(RX_Message));
+    }
     xSemaphoreGive(RXMutex);
-  
+
   }  
 }
 
