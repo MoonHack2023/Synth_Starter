@@ -56,7 +56,7 @@ SemaphoreHandle_t CAN_TX_Semaphore;
 volatile int rotationVar = 0;
 volatile int octaveVar = 0;
 volatile int masVar = 0;
-volatile int volVar = 0;
+volatile int volVar = 5;
 volatile int octVar = 0;
 volatile int waveVar = 0;
 
@@ -156,6 +156,11 @@ class Knob {
         Knob(int knob_id) {
           knobId = knob_id;
         }
+        Knob(int knob_id,int knob_rotation_start_val) {
+          knobRotation = knob_rotation_start_val;
+          knobId = knob_id;
+        }
+
         void printknobRotation() {
             Serial.println(knobRotation);
         }
@@ -177,7 +182,7 @@ class Knob {
         rotationVar = 0;
       }
       knobRotation += rotationVar;
-      if (knobId == 3){
+      if (knobId == 2){    // VOLUME KNOB
         if (!master){
           knobRotation = 0;
         }
@@ -185,18 +190,14 @@ class Knob {
           clip(knobRotation, 8, 0);
         }
       }
-      else if ((knobId == 0)){
+      else if ((knobId == 0)){   // WAVE KNOB
         clip(knobRotation, 1, 0);
         // master = bool(knobRotation);
       }
-      // else if ((knobId == 1)){
-      //   clip(knobRotation, 1, 0);
-      //   // master = bool(knobRotation);
-      // }
       else{
         clip(knobRotation, 8, 0);
       }
-      if (knobId == 1){
+      if (knobId == 3){       // MASTER KNOB
         if (knobRotation > 1){
             knobRotation = 1;
           }
@@ -216,10 +217,10 @@ class Knob {
     }
 };
 
-Knob knob3(3);
-Knob knob2(2);
-Knob knob0(0);
-Knob knob1(1);
+Knob knob3(3);   // MASTER KNOB
+Knob knob2(2,5);   // VOLUME KNOB
+Knob knob1(1);   // OCTAVE KNOB
+Knob knob0(0);   // WAVE KNOB
 
 
 const uint32_t stepSizes [] = {
@@ -380,7 +381,7 @@ uint32_t countZero(std::string keyStr){
 
 // Everything that's relevant to scanning the Keys
 void scanKeysTask(void * pvParameters){
-  knob1.decodeKnob(keyStrArray[4].substr(0, 2));
+  knob3.decodeKnob(keyStrArray[3].substr(0, 2));  // MASTER KNOB
   Serial.println("SCAN");
   const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -459,13 +460,15 @@ void scanKeysTask(void * pvParameters){
     xQueueSend( msgOutQ, TX_Message, portMAX_DELAY);
   }
 
-  knob1.decodeKnob(keyStrArray[4].substr(0, 2));
-  knob3.decodeKnob(keyStrArray[3].substr(0, 2));
-  volVar = knob3.knobRotation;
-  knob2.decodeKnob(keyStrArray[3].substr(2, 4));
-  OCTAVE = knob2.knobRotation;
-  knob0.decodeKnob(keyStrArray[4].substr(2, 4));
+  
+  knob3.decodeKnob(keyStrArray[3].substr(0, 2)); // MASTER KNOB
+ 
+  knob2.decodeKnob(keyStrArray[3].substr(2, 4)); // VOLUME KNOB
+  volVar = knob2.knobRotation;
+  knob0.decodeKnob(keyStrArray[4].substr(2, 4)); // WAVE KNOB
   waveVar = knob0.knobRotation;
+  knob1.decodeKnob(keyStrArray[4].substr(0, 2)); // OCTAVE KNOB
+  OCTAVE = knob1.knobRotation; 
   
   }
 }
