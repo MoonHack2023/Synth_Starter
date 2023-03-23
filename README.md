@@ -179,7 +179,6 @@ Pursuing the concept of maintainable code, we have employed distinct threads for
 | RX_Message       | decodeTask, scanKeysTask        | Received message from transmitting keyboards          |
 | RX_keyStr        | displayUpdateTask, scanKeysTask | Concatenate values in RX_Message                      |
 | currentStepSize  | sampleISR, scanKeysTask         | Used to determine the note frequency to be played     |
-| master           | scanKeysTask, displayUpdateTask | Determine which keyboard is recieving or transmitting |
 
 To maintain a thread safe code, we have implemented techniques to keep shared variables thread safe. RX_Message is protected with Mutex, each time it is altered or called, a `xSemaphoreTake` is used and once the task has finished with this variable, `xSemaphoreGive` is called to return the Mutex. `currentStepSize` is stored with `__atomic_store_n` which is also used to ensure thread safe code.
 
