@@ -211,6 +211,6 @@ The total latency is 41.89 ms which is less than the initiation time of the task
 
 Figure 1 displays the outcome of our critical instant analysis. The illustration emphasizes the sequence of thread execution according to their priorities, demonstrating how all deadlines are satisfied within the given time frame. Despite running all threads, there remains a time buffer before the commencement of the next thread instance, even under the most challenging conditions.
 
-![Critical_Instant_Analysis](doc/Critical_Instant_Analysis.png)
+![Critical_Instant_Analysis](https://user-images.githubusercontent.com/42444869/227381779-5b0eaa8d-f4ba-4499-b5a1-b86d9dec3899.png)
 |:--:|
 | *Fig.1 - Timeline of Tasks (not drawn to scale)* |
