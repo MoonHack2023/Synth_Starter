@@ -309,13 +309,14 @@ void sampleISR() {
 }
 
 // Create chords by summing the currentstepsize of each key 
-uint32_t chords(std::string keyStr, int OCTAVE){
+uint32_t chords(std::string keyStr, int OCTAVE, std::string& s){
   int zeroCount = 0;
   uint32_t sum = 0;
   uint32_t localCurrentStepSize = 0;
+  s = "";
   for (int i = 0; i < 12; i++){
     if (keyStr[i] == '0'){
-      zeroCount++;
+      s += noteNames[i];
       localCurrentStepSize = stepSizes[i];
       if (OCTAVE < 4){
         localCurrentStepSize = localCurrentStepSize >> -(OCTAVE - 4);
@@ -339,12 +340,13 @@ uint32_t countZero(std::string keyStr){
   }
   return zeroCount;
 }
+ 
 
 // Everything that's relevant to scanning the Keys
 void scanKeysTask(void * pvParameters){
   knob3.decodeKnob(keyStrArray[3].substr(0, 2));  // MASTER KNOB
   Serial.println("SCAN");
-  const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   uint8_t TX_Message[8] = {0};
   while(1){
@@ -397,7 +399,7 @@ void scanKeysTask(void * pvParameters){
     }
   
   if (master){
-    uint32_t sumMaster = chords(keyStr,OCTAVE);
+    uint32_t sumMaster = chords(keyStr,OCTAVE, ks);
     uint32_t sumSlave = 0;
     if (keyStrArray[5][3] == '0' || keyStrArray[6][3] == '0' ){
       // Serial.println("43");
@@ -414,7 +416,7 @@ void scanKeysTask(void * pvParameters){
       RX_keyStr = binaryHighStr + binaryLowStr;
       
       xSemaphoreGive(RXMutex);
-      sumSlave = chords(RX_keyStr,RX_Message[1]);
+      sumSlave = chords(RX_keyStr,RX_Message[1],rs);
     }
 
     if (localCurrentStepSize != 0) {
@@ -450,24 +452,25 @@ void displayUpdateTask(void *  pvParameters){
 
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency);
-    ks = "Keys:";
-    rs = "";
-    for (int i = 0; i < keyStr.length(); i++){
-      if (keyStr[i] == '0'){
-        ks += noteNames[i];
-      }
-      else if (RX_keyStr[i] == '0'){
-        rs += noteNames[i];
-      }
-    }
+    // ks = "Keys:";
+    // rs = "";
+    // for (int i = 0; i < keyStr.length(); i++){
+    //   if (keyStr[i] == '0'){
+    //     ks += noteNames[i];
+    //   }
+    //   else if (RX_keyStr[i] == '0'){
+    //     rs += noteNames[i];
+    //   }
+    // }
 
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
 
-    if(master){
-      u8g2.drawStr(2,10, ks.c_str());
-      u8g2.drawStr(2,20, rs.c_str());
-    }
+    // if(master){
+    u8g2.drawStr(2,10, ks.c_str());
+    u8g2.drawStr(2,20, rs.c_str());
+    // }
+
 
     std::string wave = "Wav: " + std::to_string(waveVar);
     u8g2.drawStr(2,30, wave.c_str());
